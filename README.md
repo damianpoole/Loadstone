@@ -15,40 +15,52 @@ Built with **Bun**, **Turborepo**, and **TypeScript**.
 
 ## Installation
 
-### Prerequisites
-- [Bun](https://bun.sh/) (v1.0+)
+### For Users (Recommended)
+Install directly from NPM to use the CLI globally:
 
-### Setup
 ```bash
-# Install dependencies
-bun install
-
-# Build the project
-bun run build
+npm install -g loadstone-rs3
 ```
+*Note: Requires Node.js installed on your system.*
+
+### For Developers (Source Code)
+If you want to contribute or build locally:
+1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.0+)
+2.  **Setup**:
+    ```bash
+    git clone https://github.com/yourusername/loadstone.git
+    cd loadstone
+    bun install
+    bun run build
+    ```
+3.  **Link**:
+    ```bash
+    cd apps/cli
+    npm link
+    ```
 
 ## Usage
 
-Run the CLI directly using Bun:
+Once installed, you can use the `loadstone` command anywhere:
 
 ```bash
 # Search for a page
-bun apps/cli/src/index.ts search "Abyssal whip"
+loadstone search "Abyssal whip"
 
 # View page content (text mode)
-bun apps/cli/src/index.ts page "Abyssal whip"
+loadstone page "Abyssal whip"
 
 # Get structured JSON for an LLM
-bun apps/cli/src/index.ts page "Abyssal whip" --json
+loadstone page "Abyssal whip" --json
 
 # Get only specific data (e.g., Drop Sources)
-bun apps/cli/src/index.ts page "Abyssal whip" --section "Drop sources" --json
+loadstone page "Abyssal whip" --section "Drop sources" --json
 
 # List items in a category
-bun apps/cli/src/index.ts category "Novice quests"
+loadstone category "Novice quests"
 
 # Check player stats
-bun apps/cli/src/index.ts profile "YourUsername"
+loadstone profile "YourUsername"
 ```
 
 ## Project Structure
