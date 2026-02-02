@@ -15,6 +15,8 @@
     "dev": "bun run --watch src/index.ts",
     "lint": "eslint .",
     "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
@@ -24,6 +26,8 @@
     "@loadstone/tsconfig": "workspace:*",
     "@loadstone/eslint-config": "workspace:*",
     "@types/bun": "latest",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^2.1.8",
+    "@vitest/ui": "^2.1.8"
   }
 }

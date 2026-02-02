@@ -5,14 +5,17 @@
   "types": "./src/index.ts",
   "scripts": {
     "lint": "eslint .",
-    "check-types": "tsc --noEmit"
-  },
-  "dependencies": {
-    "cheerio": "^1.2.0"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@loadstone/tsconfig": "workspace:*",
     "@loadstone/eslint-config": "workspace:*",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0"
   }
 }
