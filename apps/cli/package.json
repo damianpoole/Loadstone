@@ -1,6 +1,6 @@
 {
   "name": "loadstone-rs3",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "CLI for accessing the RuneScape 3 Wiki",
   "bin": {
     "loadstone": "./dist/index.js"
@@ -17,12 +17,10 @@
     "check-types": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "@loadstone/wiki-client": "workspace:*",
-    "chalk": "4",
-    "commander": "^13.1.0"
-  },
   "devDependencies": {
+    "@loadstone/wiki-client": "workspace:*",
+    "commander": "^13.1.0",
+    "chalk": "^4.1.2",
     "@loadstone/tsconfig": "workspace:*",
     "@loadstone/eslint-config": "workspace:*",
     "@types/bun": "latest",
