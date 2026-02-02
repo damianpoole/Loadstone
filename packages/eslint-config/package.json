@@ -1,0 +1,10 @@
+{
+  "name": "@loadstone/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "eslint": "^9.19.0",
+    "typescript-eslint": "^8.22.0"
+  }
+}

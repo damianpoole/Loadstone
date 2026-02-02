@@ -1,0 +1,22 @@
+{
+  "name": "loadstone-cli",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts",
+    "lint": "eslint .",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@loadstone/wiki-client": "workspace:*",
+    "commander": "^13.1.0",
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {
+    "@loadstone/tsconfig": "workspace:*",
+    "@loadstone/eslint-config": "workspace:*",
+    "@types/bun": "latest"
+  }
+}
