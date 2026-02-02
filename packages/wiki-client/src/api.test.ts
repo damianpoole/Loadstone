@@ -2,11 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { searchWiki, getPage, getCategoryMembers, getRSProfile } from "./index";
 
 // Mock fetch globally
-global.fetch = vi.fn();
+global.fetch = vi.fn() as unknown as typeof fetch;
+
+const suppressConsoleErrors = () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+};
 
 describe("searchWiki", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    suppressConsoleErrors();
   });
 
   afterEach(() => {
@@ -88,6 +93,7 @@ describe("searchWiki", () => {
 describe("getPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    suppressConsoleErrors();
   });
 
   afterEach(() => {
@@ -195,6 +201,7 @@ describe("getPage", () => {
 describe("getCategoryMembers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    suppressConsoleErrors();
   });
 
   afterEach(() => {
@@ -285,6 +292,7 @@ describe("getCategoryMembers", () => {
 describe("getRSProfile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    suppressConsoleErrors();
   });
 
   afterEach(() => {
