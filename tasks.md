@@ -15,4 +15,4 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 ## Technical Debt / Tooling
 - [ ] **Caching Layer**: Implement a file-system cache (e.g., in `~/.loadstone/cache`) with a configurable TTL (default 24h) to speed up repeated requests and reduce API load.
 - [ ] **Global Bun Path**: Resolve the absolute path requirement for Bun by ensuring the local environment is properly sourced or providing a wrapper script.
-- [ ] **Binary Distribution**: Set up a build step to produce a single-file executable for easier installation.
+- [x] **Binary Distribution**: Set up a build step to produce a single-file executable for easier installation.
