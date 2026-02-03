@@ -16,15 +16,19 @@ Built with **Bun**, **Turborepo**, and **TypeScript**.
 ## Installation
 
 ### For Users (Recommended)
+
 Install directly from NPM to use the CLI globally:
 
 ```bash
 npm install -g loadstone-rs3
 ```
-*Note: Requires Node.js installed on your system.*
+
+_Note: Requires Node.js installed on your system._
 
 ### For Developers (Source Code)
+
 If you want to contribute or build locally:
+
 1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.0+)
 2.  **Setup**:
     ```bash

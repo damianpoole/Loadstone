@@ -226,17 +226,11 @@ export function parseWikiContent(html: string): Record<string, string> {
 }
 
 /**
-
-   * Fetches the members of a specific wiki category.
-
-   * @param category The category name (e.g., "Category:Novice quests").
-
-   * @param options Configuration options.
-
-   * @returns A list of page titles in the category.
-
-   */
-
+ * Fetches the members of a specific wiki category.
+ * @param category The category name (e.g., "Category:Novice quests").
+ * @param options Configuration options.
+ * @returns A list of page titles in the category.
+ */
 export async function getCategoryMembers(
   category: string,
   options: { limit?: number; cache?: CacheOptions } = {},
@@ -244,16 +238,12 @@ export async function getCategoryMembers(
   const url = new URL(BASE_URL);
 
   url.searchParams.append("action", "query");
-
   url.searchParams.append("format", "json");
-
   url.searchParams.append("list", "categorymembers");
-
   url.searchParams.append(
     "cmtitle",
     category.startsWith("Category:") ? category : `Category:${category}`,
   );
-
   url.searchParams.append("cmlimit", (options.limit || 50).toString());
 
   try {
@@ -265,7 +255,6 @@ export async function getCategoryMembers(
     const members = data.query?.categorymembers || [];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
     return members.map((member: any) => member.title);
   } catch (error) {
     console.error("Failed to fetch category members:", error);
@@ -276,146 +265,73 @@ export async function getCategoryMembers(
 
 const SKILL_NAMES: Record<number, string> = {
   0: "Attack",
-
   1: "Defence",
-
   2: "Strength",
-
   3: "Constitution",
-
   4: "Ranged",
-
   5: "Prayer",
-
   6: "Magic",
-
   7: "Cooking",
-
   8: "Woodcutting",
-
   9: "Fletching",
-
   10: "Fishing",
-
   11: "Firemaking",
-
   12: "Crafting",
-
   13: "Smithing",
-
   14: "Mining",
-
   15: "Herblore",
-
   16: "Agility",
-
   17: "Thieving",
-
   18: "Slayer",
-
   19: "Farming",
-
   20: "Runecrafting",
-
   21: "Hunter",
-
   22: "Construction",
-
   23: "Summoning",
-
   24: "Dungeoneering",
-
   25: "Divination",
-
   26: "Invention",
-
   27: "Archaeology",
-
   28: "Necromancy",
 };
 
 export interface SkillValue {
   level: number;
-
   xp: number;
-
   rank: number;
-
   id: number;
-
   name: string;
 }
 
 export interface RSProfile {
   name: string;
-
   combatLevel: number;
-
   totalSkill: number;
-
   totalXp: number;
-
   questsComplete: number;
-
   questsStarted: number;
-
   questsNotStarted: number;
-
   skills: Record<string, number>;
-
   quests: {
     title: string;
-
     status: "COMPLETED" | "STARTED" | "NOT_STARTED";
-
     questPoints: number;
-
     members: boolean;
   }[];
-
   raw?: any;
 }
 
 /**
-
-      
-
-      
-
-      
-
-       * Fetches the RuneMetrics profile for a given user.
-
-      
-
-      
-
-      
-
-       * @param username The RuneScape username.
-
-      
-
-      
-
-      
-
-       * @returns The structured profile data.
-
-      
-
-      
-
-      
-
-       */
+ * Fetches the RuneMetrics profile for a given user.
+ * @param username The RuneScape username.
+ * @returns The structured profile data.
+ */
 
 export async function getRSProfile(
   username: string,
   options: { cache?: CacheOptions } = {},
 ): Promise<RSProfile | null> {
   const profileUrl = `https://apps.runescape.com/runemetrics/profile/profile?user=${encodeURIComponent(username)}&skillvalues`;
-
   const questsUrl = `https://apps.runescape.com/runemetrics/quests?user=${encodeURIComponent(username)}`;
 
   try {
@@ -434,7 +350,6 @@ export async function getRSProfile(
     if (profileData.error) return null;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
     let questsData: any = { quests: [] };
 
     if (questsResult.status === "fulfilled") {
@@ -444,42 +359,27 @@ export async function getRSProfile(
     const skills: Record<string, number> = {};
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
     profileData.skillvalues.forEach((sv: any) => {
       const name = SKILL_NAMES[sv.id] || `Unknown(${sv.id})`;
-
       skills[name] = sv.level;
     });
 
     return {
       name: profileData.name,
-
       combatLevel: profileData.combatlevel,
-
       totalSkill: profileData.totalskill,
-
       totalXp: profileData.totalxp,
-
       questsComplete: profileData.questscomplete,
-
       questsStarted: profileData.questsstarted,
-
       questsNotStarted: profileData.questsnotstarted,
-
       skills,
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-
       quests: (questsData.quests || []).map((q: any) => ({
         title: q.title,
-
         status: q.status,
-
         questPoints: q.questPoints,
-
         members: q.members,
       })),
-
       raw: profileData,
     };
   } catch (error) {
