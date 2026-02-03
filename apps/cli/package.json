@@ -13,7 +13,7 @@
     "build": "tsup",
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts",
-    "lint": "eslint .",
+    "lint": "biome check .",
     "check-types": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

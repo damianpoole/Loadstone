@@ -30,7 +30,8 @@ describe("page command", () => {
       title: "Abyssal whip",
       pageid: 12345,
       revid: 67890,
-      extract: '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
+      extract:
+        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
     };
 
     vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
@@ -43,6 +44,7 @@ describe("page command", () => {
     expect(wikiClient.getPage).toHaveBeenCalledWith("Abyssal whip", {
       json: true,
       section: undefined,
+      cache: {},
     });
     expect(consoleSpy).toHaveBeenCalled();
   });
@@ -52,7 +54,8 @@ describe("page command", () => {
       title: "Abyssal whip",
       pageid: 12345,
       revid: 67890,
-      extract: '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
+      extract:
+        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
     };
 
     vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
@@ -72,7 +75,8 @@ describe("page command", () => {
       title: "Test Page",
       pageid: 12345,
       revid: 67890,
-      extract: '<div class="mw-parser-output"><h2>Drop sources</h2><p>Drops</p><h2>Stats</h2><p>Stats</p></div>',
+      extract:
+        '<div class="mw-parser-output"><h2>Drop sources</h2><p>Drops</p><h2>Stats</h2><p>Stats</p></div>',
     };
 
     vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
@@ -86,6 +90,7 @@ describe("page command", () => {
     expect(wikiClient.getPage).toHaveBeenCalledWith("Test Page", {
       json: true,
       section: "Drop",
+      cache: {},
     });
   });
 
@@ -99,7 +104,9 @@ describe("page command", () => {
   });
 
   it("should handle error response", async () => {
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce({ error: "missingtitle" } as any);
+    vi.mocked(wikiClient.getPage).mockResolvedValueOnce({
+      error: "missingtitle",
+    } as any);
 
     await page("NonExistentPage", {});
 

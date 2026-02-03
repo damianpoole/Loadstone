@@ -41,9 +41,11 @@ describe("search command", () => {
 
     vi.mocked(wikiClient.searchWiki).mockResolvedValueOnce(mockResults);
 
-    await search("abyssal");
+    await search("abyssal", {});
 
-    expect(wikiClient.searchWiki).toHaveBeenCalledWith("abyssal");
+    expect(wikiClient.searchWiki).toHaveBeenCalledWith("abyssal", {
+      cache: {},
+    });
     expect(consoleSpy).toHaveBeenCalled();
   });
 

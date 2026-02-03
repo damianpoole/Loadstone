@@ -45,7 +45,9 @@ describe("profile command", () => {
 
     await profile("TestUser", {});
 
-    expect(wikiClient.getRSProfile).toHaveBeenCalledWith("TestUser");
+    expect(wikiClient.getRSProfile).toHaveBeenCalledWith("TestUser", {
+      cache: {},
+    });
     expect(consoleSpy).toHaveBeenCalled();
   });
 

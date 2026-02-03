@@ -1,8 +1,51 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import os from "node:os";
 import { searchWiki, getPage, getCategoryMembers, getRSProfile } from "./index";
 
 // Mock fetch globally
 global.fetch = vi.fn() as unknown as typeof fetch;
+
+let tempCacheDir: string | undefined;
+let previousCacheDir: string | undefined;
+let previousCacheTtlMs: string | undefined;
+let previousCacheTtlHours: string | undefined;
+
+beforeEach(async () => {
+  previousCacheDir = process.env.LOADSTONE_CACHE_DIR;
+  previousCacheTtlMs = process.env.LOADSTONE_CACHE_TTL_MS;
+  previousCacheTtlHours = process.env.LOADSTONE_CACHE_TTL_HOURS;
+
+  tempCacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "loadstone-cache-"));
+  process.env.LOADSTONE_CACHE_DIR = tempCacheDir;
+  process.env.LOADSTONE_CACHE_TTL_MS = "3600000";
+  process.env.LOADSTONE_CACHE_TTL_HOURS = undefined;
+});
+
+afterEach(async () => {
+  if (tempCacheDir) {
+    await fs.rm(tempCacheDir, { recursive: true, force: true });
+  }
+
+  if (previousCacheDir === undefined) {
+    process.env.LOADSTONE_CACHE_DIR = undefined;
+  } else {
+    process.env.LOADSTONE_CACHE_DIR = previousCacheDir;
+  }
+
+  if (previousCacheTtlMs === undefined) {
+    process.env.LOADSTONE_CACHE_TTL_MS = undefined;
+  } else {
+    process.env.LOADSTONE_CACHE_TTL_MS = previousCacheTtlMs;
+  }
+
+  if (previousCacheTtlHours === undefined) {
+    process.env.LOADSTONE_CACHE_TTL_HOURS = undefined;
+  } else {
+    process.env.LOADSTONE_CACHE_TTL_HOURS = previousCacheTtlHours;
+  }
+});
 
 const suppressConsoleErrors = () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -430,5 +473,64 @@ describe("getRSProfile", () => {
 
     expect(profile?.skills.Attack).toBe(1);
     expect(profile?.skills.Necromancy).toBe(99);
+  });
+});
+
+describe("cache behavior", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    suppressConsoleErrors();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should cache repeated search requests", async () => {
+    const mockResponse = {
+      query: {
+        search: [
+          {
+            title: "Abyssal whip",
+            snippet: "A powerful <em>weapon</em>",
+          },
+        ],
+      },
+    };
+
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    });
+
+    const first = await searchWiki("abyssal", { cache: { enabled: true } });
+    const second = await searchWiki("abyssal", { cache: { enabled: true } });
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("should bypass cache when disabled", async () => {
+    const mockResponse = {
+      query: {
+        search: [
+          {
+            title: "Abyssal whip",
+            snippet: "A powerful <em>weapon</em>",
+          },
+        ],
+      },
+    };
+
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    });
+
+    await searchWiki("abyssal", { cache: { enabled: false } });
+    await searchWiki("abyssal", { cache: { enabled: false } });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });
