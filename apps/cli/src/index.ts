@@ -16,6 +16,9 @@ program
   .command("search")
   .description("Search the wiki for a term")
   .argument("<query>", "The term to search for")
+  .option("--no-cache", "Disable cache")
+  .option("--cache-ttl <hours>", "Cache TTL in hours")
+  .option("--cache-dir <path>", "Cache directory")
   .action(search);
 
 program
@@ -23,7 +26,13 @@ program
   .description("Get the content of a specific page")
   .argument("<title>", "The title of the page")
   .option("-j, --json", "Output results as JSON")
-  .option("-s, --section <name>", "Filter output to a specific section (fuzzy match)")
+  .option(
+    "-s, --section <name>",
+    "Filter output to a specific section (fuzzy match)",
+  )
+  .option("--no-cache", "Disable cache")
+  .option("--cache-ttl <hours>", "Cache TTL in hours")
+  .option("--cache-dir <path>", "Cache directory")
   .action(page);
 
 program
@@ -32,6 +41,9 @@ program
   .argument("<name>", "The name of the category")
   .option("-j, --json", "Output results as JSON")
   .option("-l, --limit <number>", "Limit the number of results", "50")
+  .option("--no-cache", "Disable cache")
+  .option("--cache-ttl <hours>", "Cache TTL in hours")
+  .option("--cache-dir <path>", "Cache directory")
   .action(category);
 
 program
@@ -40,6 +52,9 @@ program
   .argument("<username>", "The RuneScape username")
   .option("-j, --json", "Output results as JSON")
   .option("-q, --quests", "Include full quest list in output")
+  .option("--no-cache", "Disable cache")
+  .option("--cache-ttl <hours>", "Cache TTL in hours")
+  .option("--cache-dir <path>", "Cache directory")
   .action(profile);
 
 program.parse();

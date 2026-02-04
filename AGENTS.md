@@ -45,6 +45,7 @@ loadstone/
 ### 2. Workspace Dependencies
 
 When adding dependencies:
+
 - **CLI app** (`apps/cli`): Use regular npm packages
 - **Shared packages** (`packages/*`): Reference workspace packages with `workspace:*`
   ```json
@@ -74,16 +75,16 @@ import { functionFromWikiClient } from "@loadstone/wiki-client";
 export async function commandName(args: string, options: Options) {
   // 1. User feedback with chalk
   console.log(chalk.blue(`Processing: ${args}...`));
-  
+
   // 2. Call wiki-client function
   const result = await functionFromWikiClient(args, options);
-  
+
   // 3. Handle errors gracefully
   if (!result) {
     console.log(chalk.yellow("No results found."));
     return;
   }
-  
+
   // 4. Format output (text or JSON)
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
@@ -111,6 +112,7 @@ program
 ### 6. Wiki Client Functions
 
 The `packages/wiki-client/src/index.ts` contains reusable API functions:
+
 - `searchWiki(query: string)`: Search the wiki
 - `getPage(title: string, options)`: Fetch page content
 - `getCategoryMembers(category: string, options)`: List category members
@@ -118,6 +120,7 @@ The `packages/wiki-client/src/index.ts` contains reusable API functions:
 - `parseWikiContent(html: string)`: Parse HTML into structured sections
 
 **When adding new wiki functionality:**
+
 1. Add the function to `packages/wiki-client/src/index.ts`
 2. Export it from the package
 3. Import and use it in the CLI command
@@ -125,6 +128,7 @@ The `packages/wiki-client/src/index.ts` contains reusable API functions:
 ### 7. HTML Parsing Guidelines
 
 The `parseWikiContent` function:
+
 - Removes noise: `style`, `script`, `noscript`, `.navbox`, `.mw-editsection`
 - Converts tables to pipe-delimited format
 - Converts lists to bullet points
@@ -132,6 +136,7 @@ The `parseWikiContent` function:
 - Always clean HTML before parsing to reduce token overhead
 
 **When parsing wiki content:**
+
 - Use Cheerio (`cheerio`) for DOM manipulation
 - Remove navigation boxes and edit links
 - Convert tables to readable formats (CSV-like or pipe-delimited)
@@ -140,6 +145,7 @@ The `parseWikiContent` function:
 ### 8. JSON Output Format
 
 All commands support `--json` flag for LLM consumption:
+
 - Return structured objects, not formatted strings
 - Include all relevant data fields
 - Use consistent naming (camelCase)
@@ -156,6 +162,7 @@ All commands support `--json` flag for LLM consumption:
 The project uses **Vitest** for unit testing. All code changes must include tests and pass validation.
 
 **Test Structure:**
+
 - Test files: `*.test.ts` alongside source files
 - Location: Same directory as the code being tested
 - Framework: Vitest with TypeScript support
@@ -226,12 +233,14 @@ bun run test
 ```
 
 **Test Coverage:**
+
 - **Wiki client functions**: Test all exported functions with various inputs
 - **CLI commands**: Test all command options and error cases
 - **Edge cases**: Test error handling, empty results, invalid inputs
 - **Mock external APIs**: Use `vi.mock()` and `global.fetch` mocking for API calls
 
 **Important Testing Notes:**
+
 - Mock `chalk` to return plain strings (supports method chaining: `chalk.bold.green`)
 - Mock `@loadstone/wiki-client` functions in CLI command tests
 - Mock `global.fetch` for API function tests
@@ -251,6 +260,7 @@ bun run test
 ### Adding a New Command
 
 1. **Create command file**: `apps/cli/src/commands/new-command.ts`
+
    ```typescript
    export async function newCommand(args: string, options: Options) {
      // Implementation
@@ -258,6 +268,7 @@ bun run test
    ```
 
 2. **Add wiki-client function** (if needed): `packages/wiki-client/src/index.ts`
+
    ```typescript
    export async function newWikiFunction(...) {
      // API call and parsing
@@ -265,6 +276,7 @@ bun run test
    ```
 
 3. **Register command**: `apps/cli/src/index.ts`
+
    ```typescript
    import { newCommand } from "./commands/new-command";
    program.command("new-command")...action(newCommand);
@@ -276,7 +288,7 @@ bun run test
    - Test JSON output option
    - Mock dependencies appropriately
 
-5. **Test locally**: 
+5. **Test locally**:
    - Run tests: `bun run test`
    - Run dev mode: `bun run dev` (watch mode)
    - Manual test: `bun run start`
@@ -311,6 +323,7 @@ cd apps/cli
 5. **JSON output**: Test with `--json` flag for LLM compatibility
 
 **Validation Requirements:**
+
 - ✅ All tests must pass: `bun run test`
 - ✅ TypeScript must compile without errors: `bun run check-types` (or included in test)
 - ✅ No linting errors: `bun run lint`
@@ -355,7 +368,7 @@ export async function command(args: string, options: Options) {
   const result = await fetchData(args, {
     limit: options.limit ? parseInt(options.limit) : 50,
   });
-  
+
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
@@ -399,11 +412,13 @@ export async function command(args: string, options: Options) {
 ## API Endpoints
 
 ### RuneScape Wiki API
+
 - **Base URL**: `https://runescape.wiki/api.php`
 - **Actions**: `query`, `parse`
 - **Formats**: Always use `format=json`
 
 ### RuneMetrics API
+
 - **Profile**: `https://apps.runescape.com/runemetrics/profile/profile?user={username}&skillvalues`
 - **Quests**: `https://apps.runescape.com/runemetrics/quests?user={username}`
 
@@ -418,6 +433,7 @@ export async function command(args: string, options: Options) {
 ## Future Enhancements
 
 See `tasks.md` for planned features:
+
 - Training command (parsing training guides)
 - Caching layer (`~/.loadstone/cache`)
 - Ironman-specific filters
@@ -428,6 +444,7 @@ When implementing these, follow the patterns established in existing commands.
 ## Questions?
 
 If you're unsure about:
+
 - **Architecture decisions**: Check existing commands for patterns
 - **API usage**: See `packages/wiki-client/src/index.ts` for examples
 - **CLI patterns**: See `apps/cli/src/index.ts` and command files

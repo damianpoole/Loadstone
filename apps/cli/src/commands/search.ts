@@ -1,10 +1,11 @@
 import chalk from "chalk";
 import { searchWiki } from "@loadstone/wiki-client";
+import { buildCacheOptions, type CacheCliOptions } from "./cache-options";
 
-export async function search(query: string) {
+export async function search(query: string, options: CacheCliOptions = {}) {
   console.log(chalk.blue(`Searching RuneScape 3 Wiki for: ${query}...`));
-  
-  const results = await searchWiki(query);
+  const cacheOptions = buildCacheOptions(options);
+  const results = await searchWiki(query, { cache: cacheOptions });
 
   if (results.length === 0) {
     console.log(chalk.yellow("No results found."));
