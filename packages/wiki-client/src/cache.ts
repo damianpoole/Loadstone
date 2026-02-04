@@ -90,6 +90,11 @@ const hashKey = (value: string): string => {
   return createHash("sha256").update(value).digest("hex");
 };
 
+const formatError = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  return String(error);
+};
+
 const ensureCacheDir = async (dir: string): Promise<void> => {
   await fs.mkdir(dir, { recursive: true });
 };
@@ -142,12 +147,24 @@ export const fetchJsonWithCache = async <T>(
     return response.json() as Promise<T>;
   }
 
+  let cacheReady = true;
+  try {
+    await ensureCacheDir(resolvedCache.dir);
+  } catch (error) {
+    cacheReady = false;
+    console.warn(
+      `Cache directory unavailable (${resolvedCache.dir}): ${formatError(error)}`,
+    );
+  }
+
   const cacheKey = buildCacheKey(url, options.fetchOptions, options.cacheKey);
   const cachePath = path.join(resolvedCache.dir, `${hashKey(cacheKey)}.json`);
 
-  const cached = await readCacheEntry<T>(cachePath, resolvedCache.ttlMs);
-  if (cached !== null) {
-    return cached;
+  if (cacheReady) {
+    const cached = await readCacheEntry<T>(cachePath, resolvedCache.ttlMs);
+    if (cached !== null) {
+      return cached;
+    }
   }
 
   const response = await fetch(url, options.fetchOptions);
@@ -157,11 +174,12 @@ export const fetchJsonWithCache = async <T>(
 
   const data = (await response.json()) as T;
 
-  try {
-    await ensureCacheDir(resolvedCache.dir);
-    await writeCacheEntry(cachePath, data);
-  } catch {
-    // Cache write failures should not block responses.
+  if (cacheReady) {
+    try {
+      await writeCacheEntry(cachePath, data);
+    } catch (error) {
+      console.warn(`Cache write failed (${cachePath}): ${formatError(error)}`);
+    }
   }
 
   return data;
