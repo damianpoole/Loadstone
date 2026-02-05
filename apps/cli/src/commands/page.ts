@@ -4,7 +4,12 @@ import { buildCacheOptions, type CacheCliOptions } from "./cache-options";
 
 export async function page(
   title: string,
-  options: { json?: boolean; section?: string } & CacheCliOptions = {},
+  options: {
+    json?: boolean;
+    section?: string;
+    headings?: boolean;
+    fields?: string;
+  } & CacheCliOptions = {},
 ) {
   if (!options.json) {
     console.log(chalk.blue(`Fetching content for: ${title}...`));
@@ -31,36 +36,85 @@ export async function page(
   // (because getPage unwraps data.parse)
 
   if (options.json) {
-    // The 'extract' here is the raw HTML
-    const rawHtml = data.extract || "";
-    let structuredContent = parseWikiContent(rawHtml);
+    const fieldMap: Record<
+      string,
+      "title" | "pageId" | "url" | "lastModified" | "sections"
+    > = {
+      title: "title",
+      pageid: "pageId",
+      pageId: "pageId",
+      url: "url",
+      lastmodified: "lastModified",
+      lastModified: "lastModified",
+      sections: "sections",
+    };
+    const requestedFields = options.fields
+      ? new Set(
+          options.fields
+            .split(",")
+            .map((field) => field.trim())
+            .filter((field) => field.length > 0)
+            .map((field) => fieldMap[field] || fieldMap[field.toLowerCase()])
+            .filter(
+              (
+                field,
+              ): field is
+                | "title"
+                | "pageId"
+                | "url"
+                | "lastModified"
+                | "sections" => Boolean(field),
+            ),
+        )
+      : null;
+    const includeField = (
+      field: "title" | "pageId" | "url" | "lastModified" | "sections",
+    ) => !requestedFields || requestedFields.has(field);
 
-    // Filter sections if requested
-    if (options.section) {
-      const filtered: Record<string, string> = {};
-      const key = Object.keys(structuredContent).find((k) =>
-        k.toLowerCase().includes(options.section!.toLowerCase()),
-      );
-      if (key) {
-        filtered[key] = structuredContent[key];
-        structuredContent = filtered;
-      } else {
-        // If not found, return empty or error? Let's return empty sections but with metadata
-        structuredContent = {};
+    let sections: Record<string, string> | string[] | undefined;
+    if (includeField("sections")) {
+      // The 'extract' here is the raw HTML
+      const rawHtml = data.extract || "";
+      let structuredContent = parseWikiContent(rawHtml);
+
+      // Filter sections if requested
+      if (options.section) {
+        const filtered: Record<string, string> = {};
+        const key = Object.keys(structuredContent).find((k) =>
+          k.toLowerCase().includes(options.section!.toLowerCase()),
+        );
+        if (key) {
+          filtered[key] = structuredContent[key];
+          structuredContent = filtered;
+        } else {
+          // If not found, return empty sections but with metadata
+          structuredContent = {};
+        }
       }
+
+      sections = options.headings
+        ? Object.keys(structuredContent)
+        : structuredContent;
     }
 
-    // Combine metadata with structured sections
-    const result = {
-      title: data.title,
-      pageId: data.pageid,
-      // URL needs to be constructed or fetched if not in parse data (parse data has 'displaytitle' etc)
-      // We can try to construct it or rely on what we have.
-      // 'canonicalurl' is not directly in parse output usually, but we can assume standard structure or use pageprops
-      url: `https://runescape.wiki/w/${encodeURIComponent(data.title.replace(/ /g, "_"))}`,
-      lastModified: data.revid, // 'revid' is available in parse
-      sections: structuredContent,
-    };
+    const result: Record<string, unknown> = {};
+    if (includeField("title")) {
+      result.title = data.title;
+    }
+    if (includeField("pageId")) {
+      result.pageId = data.pageid;
+    }
+    if (includeField("url")) {
+      result.url = `https://runescape.wiki/w/${encodeURIComponent(
+        data.title.replace(/ /g, "_"),
+      )}`;
+    }
+    if (includeField("lastModified")) {
+      result.lastModified = data.revid;
+    }
+    if (includeField("sections")) {
+      result.sections = sections ?? (options.headings ? [] : {});
+    }
 
     console.log(JSON.stringify(result, null, 2));
     return;

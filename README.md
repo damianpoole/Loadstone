@@ -12,6 +12,8 @@ Built with **Bun**, **Turborepo**, and **TypeScript**.
 - **Category Exploration**: Discover related pages (e.g., "Category:Novice quests").
 - **Player Profile**: Fetch stats and quest data from RuneMetrics.
 - **JSON Output**: All commands support `--json` for easy integration with LLMs.
+- **Caching**: File-system cache with TTL and optional custom directory.
+- **Token Reduction**: Headings-only output and JSON field selection for smaller payloads.
 
 ## Installation
 
@@ -57,6 +59,12 @@ loadstone page "Abyssal whip"
 # Get structured JSON for an LLM
 loadstone page "Abyssal whip" --json
 
+# Get only section headings (for quick structure)
+loadstone page "Abyssal whip" --json --headings
+
+# Get a subset of JSON fields to reduce tokens
+loadstone page "Abyssal whip" --json --fields title,sections
+
 # Get only specific data (e.g., Drop Sources)
 loadstone page "Abyssal whip" --section "Drop sources" --json
 
@@ -65,6 +73,11 @@ loadstone category "Novice quests"
 
 # Check player stats
 loadstone profile "YourUsername"
+
+# Cache controls
+loadstone page "Abyssal whip" --cache-ttl 12
+loadstone page "Abyssal whip" --cache-dir "~/.loadstone/cache"
+loadstone page "Abyssal whip" --no-cache
 ```
 
 ## Project Structure

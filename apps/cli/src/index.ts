@@ -30,6 +30,11 @@ program
     "-s, --section <name>",
     "Filter output to a specific section (fuzzy match)",
   )
+  .option("--headings", "Output only section headings (JSON mode only)")
+  .option(
+    "--fields <list>",
+    "Comma-separated JSON fields (title,pageId,url,lastModified,sections)",
+  )
   .option("--no-cache", "Disable cache")
   .option("--cache-ttl <hours>", "Cache TTL in hours")
   .option("--cache-dir <path>", "Cache directory")
