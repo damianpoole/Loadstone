@@ -138,6 +138,8 @@ export function parseWikiContent(html: string): Record<string, string> {
   $(".navbox").remove(); // Remove navigation templates at the bottom
   $(".mw-editsection").remove(); // Remove [edit] links from headers
   $(".magnify").remove(); // Remove 'magnify' icon text from images
+  $(".toc").remove(); // Remove table of contents
+  $("#toc").remove(); // Remove table of contents by id
 
   // The summary is everything before the first h2
   // We'll traverse from the root
@@ -145,7 +147,7 @@ export function parseWikiContent(html: string): Record<string, string> {
   let currentContent: string[] = [];
 
   // Helper to convert an element to text, handling tables specifically
-  const getText = (el: cheerio.AnyNode): string => {
+  const getText = (el: Parameters<typeof $>[0]): string => {
     const node = $(el);
 
     // Handle Tables: Try to make them CSV-like or readable
@@ -179,41 +181,60 @@ export function parseWikiContent(html: string): Record<string, string> {
 
   // Iterate over all children of the parser output wrapper
   // MediaWiki usually wraps content in <div class="mw-parser-output">
-  const root = $(".mw-parser-output").length
-    ? $(".mw-parser-output")
-    : $.root();
+  const rootChildren = $(".mw-parser-output").length
+    ? $(".mw-parser-output").children()
+    : $("body").length
+      ? $("body").children()
+      : $.root().children();
 
-  root.children().each((_, el) => {
+  const normalizeHeaderText = (text: string) =>
+    text
+      .replace(/ \[edit \| edit source\]/g, "")
+      .replace(/ \[edit\]/g, "")
+      .trim();
+
+  rootChildren.each((_, el) => {
     const node = $(el);
+    const headingNode =
+      node.is("h2") || node.is("h3") || node.is("h4")
+        ? node
+        : node.hasClass("mw-heading")
+          ? node.children("h2, h3, h4").first()
+          : null;
 
-    if (node.is("h2")) {
-      // Save previous section
-      if (currentContent.length > 0) {
-        const text = currentContent.join("\n").trim();
-        if (text) sections[currentSection] = text;
+    if (headingNode && headingNode.length > 0) {
+      if (headingNode.is("h2")) {
+        const headingText = normalizeHeaderText(headingNode.text());
+        const headingId = headingNode.attr("id");
+        if (
+          headingId === "mw-toc-heading" ||
+          headingText.toLowerCase() === "contents"
+        ) {
+          return;
+        }
+
+        // Save previous section
+        if (currentContent.length > 0) {
+          const text = currentContent.join("\n").trim();
+          if (text) sections[currentSection] = text;
+        }
+
+        // Start new section
+        currentSection = headingText;
+        currentContent = [];
+      } else if (headingNode.is("h3") || headingNode.is("h4")) {
+        // Add subheaders as text
+        const subHeader = normalizeHeaderText(headingNode.text());
+        if (subHeader) {
+          currentContent.push(`\n=== ${subHeader} ===`);
+        }
       }
-
-      // Start new section
-      // Remove 'edit' links usually found in headers
-      currentSection = node
-        .text()
-        .replace(/ \[edit \| edit source\]/g, "")
-        .replace(/ \[edit\]/g, "")
-        .trim();
-      currentContent = [];
-    } else if (node.is("h3") || node.is("h4")) {
-      // Add subheaders as text
-      const subHeader = node
-        .text()
-        .replace(/ \[edit \| edit source\]/g, "")
-        .replace(/ \[edit\]/g, "")
-        .trim();
-      currentContent.push(`\n=== ${subHeader} ===`);
-    } else {
-      // Add content
-      const text = getText(el);
-      if (text) currentContent.push(text);
+      return;
     }
+
+    // Add content
+    const text = getText(el);
+    if (text) currentContent.push(text);
   });
 
   // Save the last section

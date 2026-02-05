@@ -77,6 +77,41 @@ describe("parseWikiContent", () => {
     expect(result["Items"]).toContain("Item 2");
   });
 
+  it("should parse headings wrapped in mw-heading containers", () => {
+    const html = `
+      <div class="mw-parser-output">
+        <div class="mw-heading mw-heading2"><h2>Combat stats</h2></div>
+        <p>Weapon stats here</p>
+        <div class="mw-heading mw-heading3"><h3>Detailed</h3></div>
+        <p>Detailed stats here</p>
+      </div>
+    `;
+
+    const result = parseWikiContent(html);
+
+    expect(result).toHaveProperty("Combat stats");
+    expect(result["Combat stats"]).toContain("Weapon stats here");
+    expect(result["Combat stats"]).toContain("Detailed");
+  });
+
+  it("should skip table of contents headings", () => {
+    const html = `
+      <div class="mw-parser-output">
+        <h2 id="mw-toc-heading">Contents</h2>
+        <div id="toc" class="toc">
+          <ul><li>Item</li></ul>
+        </div>
+        <div class="mw-heading mw-heading2"><h2>Drop sources</h2></div>
+        <p>Drops content</p>
+      </div>
+    `;
+
+    const result = parseWikiContent(html);
+
+    expect(result).not.toHaveProperty("Contents");
+    expect(result).toHaveProperty("Drop sources");
+  });
+
   it("should remove navigation boxes and scripts", () => {
     const html = `
       <div class="mw-parser-output">
@@ -125,6 +160,7 @@ describe("parseWikiContent", () => {
     `;
 
     const result = parseWikiContent(html);
-    expect(result).toHaveProperty("Summary");
+    expect(result).toHaveProperty("Section");
+    expect(result["Section"]).toContain("Content");
   });
 });

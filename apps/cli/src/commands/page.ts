@@ -4,7 +4,12 @@ import { buildCacheOptions, type CacheCliOptions } from "./cache-options";
 
 export async function page(
   title: string,
-  options: { json?: boolean; section?: string } & CacheCliOptions = {},
+  options: {
+    json?: boolean;
+    section?: string;
+    headings?: boolean;
+    fields?: string;
+  } & CacheCliOptions = {},
 ) {
   if (!options.json) {
     console.log(chalk.blue(`Fetching content for: ${title}...`));
@@ -31,6 +36,13 @@ export async function page(
   // (because getPage unwraps data.parse)
 
   if (options.json) {
+    const requestedSections = options.fields
+      ? options.fields
+          .split(",")
+          .map((field) => field.trim())
+          .filter((field) => field.length > 0)
+      : [];
+
     // The 'extract' here is the raw HTML
     const rawHtml = data.extract || "";
     let structuredContent = parseWikiContent(rawHtml);
@@ -45,21 +57,44 @@ export async function page(
         filtered[key] = structuredContent[key];
         structuredContent = filtered;
       } else {
-        // If not found, return empty or error? Let's return empty sections but with metadata
+        // If not found, return empty sections but with metadata
         structuredContent = {};
       }
     }
 
-    // Combine metadata with structured sections
+    if (requestedSections.length > 0) {
+      const filtered: Record<string, string> = {};
+      const sectionKeys = Object.keys(structuredContent);
+      for (const requested of requestedSections) {
+        const requestedLower = requested.toLowerCase();
+        const exactMatch = sectionKeys.find(
+          (key) => key.toLowerCase() === requestedLower,
+        );
+        const fuzzyMatch = exactMatch
+          ? null
+          : sectionKeys.find((key) =>
+              key.toLowerCase().includes(requestedLower),
+            );
+        const matchKey = exactMatch ?? fuzzyMatch;
+        if (matchKey) {
+          filtered[matchKey] = structuredContent[matchKey];
+        }
+      }
+      structuredContent = filtered;
+    }
+
+    const sections = options.headings
+      ? Object.keys(structuredContent)
+      : structuredContent;
+
     const result = {
       title: data.title,
       pageId: data.pageid,
-      // URL needs to be constructed or fetched if not in parse data (parse data has 'displaytitle' etc)
-      // We can try to construct it or rely on what we have.
-      // 'canonicalurl' is not directly in parse output usually, but we can assume standard structure or use pageprops
-      url: `https://runescape.wiki/w/${encodeURIComponent(data.title.replace(/ /g, "_"))}`,
-      lastModified: data.revid, // 'revid' is available in parse
-      sections: structuredContent,
+      url: `https://runescape.wiki/w/${encodeURIComponent(
+        data.title.replace(/ /g, "_"),
+      )}`,
+      lastModified: data.revid,
+      sections,
     };
 
     console.log(JSON.stringify(result, null, 2));

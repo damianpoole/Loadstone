@@ -15,7 +15,7 @@ vi.mock("chalk", () => {
 });
 
 describe("page command", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn<typeof console, "log">>;
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -68,6 +68,75 @@ describe("page command", () => {
     const output = consoleSpy.mock.calls.flat().join(" ");
     expect(output).toContain('"title"');
     expect(output).toContain('"Abyssal whip"');
+  });
+
+  it("should output only headings when headings option is true", async () => {
+    const mockData = {
+      title: "Abyssal whip",
+      pageid: 12345,
+      revid: 67890,
+      extract:
+        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p><h2>Drop sources</h2><p>Drops</p></div>',
+    };
+
+    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
+    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
+      Stats: "Content",
+      "Drop sources": "Drops",
+    });
+
+    await page("Abyssal whip", { json: true, headings: true });
+
+    const output = consoleSpy.mock.calls.flat().join(" ");
+    expect(output).toContain('"sections"');
+    expect(output).toContain('"Stats"');
+    expect(output).toContain('"Drop sources"');
+  });
+
+  it("should filter JSON sections when fields option is provided", async () => {
+    const mockData = {
+      title: "Abyssal whip",
+      pageid: 12345,
+      revid: 67890,
+      extract:
+        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p><h2>Drop sources</h2><p>Drops</p></div>',
+    };
+
+    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
+    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
+      Stats: "Content",
+      "Drop sources": "Drops",
+    });
+
+    await page("Abyssal whip", { json: true, fields: "Drop sources" });
+
+    const output = consoleSpy.mock.calls.flat().join(" ");
+    expect(output).toContain('"title"');
+    expect(output).toContain('"sections"');
+    expect(output).toContain('"Drop sources"');
+    expect(output).not.toContain('"Stats"');
+  });
+
+  it("should filter headings by section in JSON mode", async () => {
+    const mockData = {
+      title: "Test Page",
+      pageid: 12345,
+      revid: 67890,
+      extract:
+        '<div class="mw-parser-output"><h2>Drop sources</h2><p>Drops</p><h2>Stats</h2><p>Stats</p></div>',
+    };
+
+    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
+    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
+      "Drop sources": "Drops",
+      Stats: "Stats",
+    });
+
+    await page("Test Page", { json: true, headings: true, section: "Drop" });
+
+    const output = consoleSpy.mock.calls.flat().join(" ");
+    expect(output).toContain('"Drop sources"');
+    expect(output).not.toContain('"Stats"');
   });
 
   it("should filter sections when section option is provided", async () => {
