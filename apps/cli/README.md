@@ -23,8 +23,8 @@ loadstone page "Abyssal whip" --json
 # Get only section headings
 loadstone page "Abyssal whip" --json --headings
 
-# Get a subset of JSON fields
-loadstone page "Abyssal whip" --json --fields title,sections
+# Get a subset of sections
+loadstone page "Abyssal whip" --json --fields "Combat stats,Drop sources"
 
 # Filter to a section (fuzzy match)
 loadstone page "Abyssal whip" --section "Drop sources" --json

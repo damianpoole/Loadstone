@@ -36,85 +36,66 @@ export async function page(
   // (because getPage unwraps data.parse)
 
   if (options.json) {
-    const fieldMap: Record<
-      string,
-      "title" | "pageId" | "url" | "lastModified" | "sections"
-    > = {
-      title: "title",
-      pageid: "pageId",
-      pageId: "pageId",
-      url: "url",
-      lastmodified: "lastModified",
-      lastModified: "lastModified",
-      sections: "sections",
-    };
-    const requestedFields = options.fields
-      ? new Set(
-          options.fields
-            .split(",")
-            .map((field) => field.trim())
-            .filter((field) => field.length > 0)
-            .map((field) => fieldMap[field] || fieldMap[field.toLowerCase()])
-            .filter(
-              (
-                field,
-              ): field is
-                | "title"
-                | "pageId"
-                | "url"
-                | "lastModified"
-                | "sections" => Boolean(field),
-            ),
-        )
-      : null;
-    const includeField = (
-      field: "title" | "pageId" | "url" | "lastModified" | "sections",
-    ) => !requestedFields || requestedFields.has(field);
+    const requestedSections = options.fields
+      ? options.fields
+          .split(",")
+          .map((field) => field.trim())
+          .filter((field) => field.length > 0)
+      : [];
 
-    let sections: Record<string, string> | string[] | undefined;
-    if (includeField("sections")) {
-      // The 'extract' here is the raw HTML
-      const rawHtml = data.extract || "";
-      let structuredContent = parseWikiContent(rawHtml);
+    // The 'extract' here is the raw HTML
+    const rawHtml = data.extract || "";
+    let structuredContent = parseWikiContent(rawHtml);
 
-      // Filter sections if requested
-      if (options.section) {
-        const filtered: Record<string, string> = {};
-        const key = Object.keys(structuredContent).find((k) =>
-          k.toLowerCase().includes(options.section!.toLowerCase()),
+    // Filter sections if requested
+    if (options.section) {
+      const filtered: Record<string, string> = {};
+      const key = Object.keys(structuredContent).find((k) =>
+        k.toLowerCase().includes(options.section!.toLowerCase()),
+      );
+      if (key) {
+        filtered[key] = structuredContent[key];
+        structuredContent = filtered;
+      } else {
+        // If not found, return empty sections but with metadata
+        structuredContent = {};
+      }
+    }
+
+    if (requestedSections.length > 0) {
+      const filtered: Record<string, string> = {};
+      const sectionKeys = Object.keys(structuredContent);
+      for (const requested of requestedSections) {
+        const requestedLower = requested.toLowerCase();
+        const exactMatch = sectionKeys.find(
+          (key) => key.toLowerCase() === requestedLower,
         );
-        if (key) {
-          filtered[key] = structuredContent[key];
-          structuredContent = filtered;
-        } else {
-          // If not found, return empty sections but with metadata
-          structuredContent = {};
+        const fuzzyMatch = exactMatch
+          ? null
+          : sectionKeys.find((key) =>
+              key.toLowerCase().includes(requestedLower),
+            );
+        const matchKey = exactMatch ?? fuzzyMatch;
+        if (matchKey) {
+          filtered[matchKey] = structuredContent[matchKey];
         }
       }
-
-      sections = options.headings
-        ? Object.keys(structuredContent)
-        : structuredContent;
+      structuredContent = filtered;
     }
 
-    const result: Record<string, unknown> = {};
-    if (includeField("title")) {
-      result.title = data.title;
-    }
-    if (includeField("pageId")) {
-      result.pageId = data.pageid;
-    }
-    if (includeField("url")) {
-      result.url = `https://runescape.wiki/w/${encodeURIComponent(
+    const sections = options.headings
+      ? Object.keys(structuredContent)
+      : structuredContent;
+
+    const result = {
+      title: data.title,
+      pageId: data.pageid,
+      url: `https://runescape.wiki/w/${encodeURIComponent(
         data.title.replace(/ /g, "_"),
-      )}`;
-    }
-    if (includeField("lastModified")) {
-      result.lastModified = data.revid;
-    }
-    if (includeField("sections")) {
-      result.sections = sections ?? (options.headings ? [] : {});
-    }
+      )}`,
+      lastModified: data.revid,
+      sections,
+    };
 
     console.log(JSON.stringify(result, null, 2));
     return;

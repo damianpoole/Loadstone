@@ -33,7 +33,7 @@ program
   .option("--headings", "Output only section headings (JSON mode only)")
   .option(
     "--fields <list>",
-    "Comma-separated JSON fields (title,pageId,url,lastModified,sections)",
+    "Comma-separated section names to include in JSON output",
   )
   .option("--no-cache", "Disable cache")
   .option("--cache-ttl <hours>", "Cache TTL in hours")

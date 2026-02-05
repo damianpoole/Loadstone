@@ -62,8 +62,8 @@ loadstone page "Abyssal whip" --json
 # Get only section headings (for quick structure)
 loadstone page "Abyssal whip" --json --headings
 
-# Get a subset of JSON fields to reduce tokens
-loadstone page "Abyssal whip" --json --fields title,sections
+# Get a subset of sections to reduce tokens
+loadstone page "Abyssal whip" --json --fields "Combat stats,Drop sources"
 
 # Get only specific data (e.g., Drop Sources)
 loadstone page "Abyssal whip" --section "Drop sources" --json
