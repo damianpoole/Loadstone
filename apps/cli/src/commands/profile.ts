@@ -1,10 +1,19 @@
 import chalk from "chalk";
-import { getRSProfile } from "@loadstone/wiki-client";
+import { getRSProfile, type RSProfile } from "@loadstone/wiki-client";
 import { buildCacheOptions, type CacheCliOptions } from "./cache-options";
 
 export async function profile(
   username: string,
-  options: { json?: boolean; quests?: boolean } & CacheCliOptions = {},
+  options: {
+    json?: boolean;
+    quests?: boolean;
+    skillsOnly?: boolean;
+    questsOnly?: boolean;
+    completedQuestsOnly?: boolean;
+    startedQuestsOnly?: boolean;
+    notStartedQuestsOnly?: boolean;
+    includeRaw?: boolean;
+  } & CacheCliOptions = {},
 ) {
   if (!options.json) {
     console.log(chalk.blue(`Fetching RuneMetrics profile for: ${username}...`));
@@ -24,7 +33,39 @@ export async function profile(
   }
 
   if (options.json) {
-    console.log(JSON.stringify(data, null, 2));
+    let outputData: unknown;
+
+    if (options.skillsOnly) {
+      outputData = { skills: data.skills };
+    } else if (options.questsOnly) {
+      outputData = {
+        quests: data.quests.map((q) => ({ title: q.title, status: q.status })),
+      };
+    } else if (options.completedQuestsOnly) {
+      outputData = {
+        quests: data.quests
+          .filter((q) => q.status === "COMPLETED")
+          .map((q) => ({ title: q.title, status: q.status })),
+      };
+    } else if (options.startedQuestsOnly) {
+      outputData = {
+        quests: data.quests
+          .filter((q) => q.status === "STARTED")
+          .map((q) => ({ title: q.title, status: q.status })),
+      };
+    } else if (options.notStartedQuestsOnly) {
+      outputData = {
+        quests: data.quests
+          .filter((q) => q.status === "NOT_STARTED")
+          .map((q) => ({ title: q.title, status: q.status })),
+      };
+    } else {
+      // Default: return full profile without raw data
+      const { raw, ...profileWithoutRaw } = data;
+      outputData = options.includeRaw ? data : profileWithoutRaw;
+    }
+
+    console.log(JSON.stringify(outputData, null, 2));
     return;
   }
 
