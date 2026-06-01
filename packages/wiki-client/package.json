@@ -13,7 +13,7 @@
     "@loadstone/tsconfig": "workspace:*",
     "@loadstone/eslint-config": "workspace:*",
     "@types/bun": "latest",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "cheerio": "^1.2.0"
