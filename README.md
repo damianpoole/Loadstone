@@ -31,7 +31,7 @@ _Note: Requires Node.js installed on your system._
 
 If you want to contribute or build locally:
 
-1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.0+)
+1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.2.1+) and [Node.js](https://nodejs.org/) (v22.12+ for Vitest 5)
 2.  **Setup**:
     ```bash
     git clone https://github.com/yourusername/loadstone.git

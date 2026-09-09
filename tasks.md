@@ -20,3 +20,4 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 - [x] **Caching Layer**: Implement a file-system cache (e.g., in `~/.loadstone/cache`) with a configurable TTL (default 24h) to speed up repeated requests and reduce API load.
 - [x] **Global Bun Path**: Resolve the absolute path requirement for Bun by ensuring the local environment is properly sourced or providing a wrapper script.
 - [x] **Binary Distribution**: Set up a build step to produce a single-file executable for easier installation.
+- [x] **Dependency Security**: Upgrade Vitest and its UI to v5, refresh vulnerable dependencies, and override esbuild to a patched release until tsup updates its dependency range.

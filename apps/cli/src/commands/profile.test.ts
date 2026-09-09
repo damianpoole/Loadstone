@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { profile } from "./profile";
 import * as wikiClient from "@loadstone/wiki-client";
 
@@ -15,7 +15,7 @@ vi.mock("chalk", () => {
 });
 
 describe("profile command", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn<typeof console, "log">>;
+  let consoleSpy: MockInstance<typeof console.log>;
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
