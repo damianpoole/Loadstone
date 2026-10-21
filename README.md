@@ -22,7 +22,7 @@ Built with **Bun**, **Turborepo**, and **TypeScript**.
 Install directly from NPM to use the CLI globally:
 
 ```bash
-npm install -g loadstone-rs3
+bun install -g loadstone-rs3
 ```
 
 _Note: Requires Node.js installed on your system._
@@ -34,16 +34,36 @@ If you want to contribute or build locally:
 1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.2.1+) and [Node.js](https://nodejs.org/) (v22.12+ for Vitest 5)
 2.  **Setup**:
     ```bash
-    git clone https://github.com/yourusername/loadstone.git
-    cd loadstone
+    git clone https://github.com/damianpoole/Loadstone.git
+    cd Loadstone
     bun install
     bun run build
     ```
 3.  **Link**:
     ```bash
     cd apps/cli
-    npm link
+    bun link
     ```
+
+Ensure Bun's global bin directory (`bun pm bin -g`) is on your PATH. The linked
+`loadstone` command runs the local bundle through Node.js; rebuild after source changes.
+
+### Codex skill
+
+The reusable skill is maintained at `.opencode/skills/loadstone-cli/SKILL.md`
+(with a Gemini variant under `.gemini/skills/`). To install it for Codex after
+building and linking the CLI, run from the repository root:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R .opencode/skills/loadstone-cli "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+If a skill is already installed, review local customizations before replacing it.
+Provide your RuneScape character name explicitly when first querying your profile.
+Use `--no-cache` for fresh progress checks. Normal skill output contains levels;
+quest API failure may produce an empty list, so an empty list alone does not prove
+that no quests are complete.
 
 ## Usage
 
