@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vite-plus/test";
 import { search } from "./search";
 import * as wikiClient from "@loadstone/wiki-client";
 

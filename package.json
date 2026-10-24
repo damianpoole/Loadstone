@@ -1,29 +1,23 @@
 {
   "name": "loadstone",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "test:watch": "turbo run test:watch",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,md}\""
+    "build": "vp run -r build",
+    "dev": "pnpm --filter loadstone-rs3 dev",
+    "start": "pnpm --filter loadstone-rs3 start",
+    "lint": "vp lint",
+    "check-types": "pnpm -r check-types",
+    "test": "vp run -r test",
+    "test:watch": "pnpm -r --parallel test:watch",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "prettier": "^3.9.6",
-    "turbo": "^2.10.12",
     "typescript": "^5.9.3",
-    "vite": "^8.2.2",
-    "vitest": "^5.0.0"
+    "vite-plus": "catalog:"
   },
-  "packageManager": "bun@1.2.1",
-  "overrides": {
-    "esbuild": "^0.28.2"
-  }
+  "engines": {
+    "node": "^24.19.0 || >=26.0.0"
+  },
+  "packageManager": "pnpm@10.34.8"
 }

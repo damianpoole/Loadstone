@@ -1,0 +1,9 @@
+[tools]
+node = "24.19.0"
+"npm:pnpm" = "10.34.8"
+
+[tasks.setup]
+run = "pnpm install --frozen-lockfile"
+
+[tasks.check]
+run = "pnpm run check-types && pnpm run lint && pnpm run test && pnpm run build"

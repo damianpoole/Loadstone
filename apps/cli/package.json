@@ -5,29 +5,29 @@
   "bin": {
     "loadstone": "./dist/index.js"
   },
-  "main": "./dist/index.js",
   "files": [
     "dist"
   ],
+  "main": "./dist/index.js",
   "scripts": {
-    "build": "tsup",
-    "start": "bun run src/index.ts",
-    "dev": "bun run --watch src/index.ts",
-    "lint": "biome check .",
+    "build": "vp pack",
+    "start": "vp pack && node dist/index.js",
+    "dev": "vp pack --watch",
+    "lint": "vp lint",
     "check-types": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepublishOnly": "bun run build"
+    "test": "vp test run",
+    "test:watch": "vp test watch",
+    "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
-    "@loadstone/wiki-client": "workspace:*",
-    "commander": "^13.1.0",
-    "chalk": "^4.1.2",
     "@loadstone/tsconfig": "workspace:*",
-    "@loadstone/eslint-config": "workspace:*",
-    "@types/bun": "latest",
-    "tsup": "^8.5.1",
-    "vitest": "^5.0.0",
-    "@vitest/ui": "^5.0.0"
+    "@loadstone/wiki-client": "workspace:*",
+    "@types/node": "^24.0.0",
+    "chalk": "^4.1.2",
+    "commander": "^13.1.0",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": "^24.19.0 || >=26.0.0"
   }
 }

@@ -4,18 +4,17 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "lint": "biome check .",
+    "lint": "vp lint",
     "check-types": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "devDependencies": {
-    "@loadstone/tsconfig": "workspace:*",
-    "@loadstone/eslint-config": "workspace:*",
-    "@types/bun": "latest",
-    "vitest": "^5.0.0"
+    "test": "vp test run",
+    "test:watch": "vp test watch"
   },
   "dependencies": {
     "cheerio": "^1.2.0"
+  },
+  "devDependencies": {
+    "@loadstone/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "vite-plus": "catalog:"
   }
 }

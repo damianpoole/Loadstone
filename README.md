@@ -2,7 +2,7 @@
 
 A powerful CLI tool for accessing the [RuneScape 3 Wiki](https://runescape.wiki/), designed to assist Ironman players and power LLM agents with structured game data.
 
-Built with **Bun**, **Turborepo**, and **TypeScript**.
+Built with **Node.js**, **pnpm**, **Vite Plus**, and **TypeScript**, with tools pinned by **mise**.
 
 ## Features
 
@@ -22,28 +22,50 @@ Built with **Bun**, **Turborepo**, and **TypeScript**.
 Install directly from NPM to use the CLI globally:
 
 ```bash
-npm install -g loadstone-rs3
+pnpm add -g loadstone-rs3
 ```
 
-_Note: Requires Node.js installed on your system._
+_Note: Source builds require Node.js 24.19+ on the 24.x line, or Node.js 26+. The repository pins Node.js 24.19.0 with mise._
 
 ### For Developers (Source Code)
 
 If you want to contribute or build locally:
 
-1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.2.1+) and [Node.js](https://nodejs.org/) (v22.12+ for Vitest 5)
+1.  **Prerequisites**: [mise](https://mise.jdx.dev/). Activate mise in your shell; mise.toml pins Node.js and pnpm.
 2.  **Setup**:
     ```bash
-    git clone https://github.com/yourusername/loadstone.git
-    cd loadstone
-    bun install
-    bun run build
+    git clone https://github.com/damianpoole/Loadstone.git
+    cd Loadstone
+    mise trust
+    mise install
+    pnpm install --frozen-lockfile
+    pnpm run build
     ```
 3.  **Link**:
     ```bash
     cd apps/cli
-    npm link
+    pnpm link --global
     ```
+
+Run `pnpm setup` if needed and ensure pnpm's global bin directory (`pnpm bin -g`) is on your PATH. The linked
+`loadstone` command runs the local bundle through Node.js; rebuild after source changes.
+
+### Codex skill
+
+The reusable skill is maintained at `.opencode/skills/loadstone-cli/SKILL.md`
+(with a Gemini variant under `.gemini/skills/`). To install it for Codex after
+building and linking the CLI, run from the repository root:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R .opencode/skills/loadstone-cli "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+If a skill is already installed, review local customizations before replacing it.
+Provide your RuneScape character name explicitly when first querying your profile.
+Use `--no-cache` for fresh progress checks. Normal skill output contains levels;
+quest API failure may produce an empty list, so an empty list alone does not prove
+that no quests are complete.
 
 ## Usage
 
@@ -103,16 +125,22 @@ loadstone page "Abyssal whip" --no-cache
 - `apps/cli`: The main command-line application.
 - `packages/wiki-client`: Shared library for RS3 Wiki and RuneMetrics API interaction.
 - `packages/tsconfig`: Shared TypeScript configuration.
-- `packages/eslint-config`: Shared ESLint configuration.
 
 ## Development
 
-This project uses [Turborepo](https://turbo.build/) to manage the workspace.
+This project uses pnpm workspaces and [Vite Plus](https://viteplus.dev/) for task execution, packaging, tests, linting, and formatting. Run `mise run check` for type checking, linting, tests, and a production build.
 
 ```bash
-# Run dev mode (watch)
-bun run dev
+# Rebuild the CLI on source changes (run dist/index.js separately)
+pnpm run dev
 
 # Lint all packages
-bun run lint
+pnpm run lint
+
+# Type check and test all packages
+pnpm run check-types
+pnpm run test
+
+# Build and run the CLI
+pnpm start --help
 ```

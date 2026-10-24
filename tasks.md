@@ -18,6 +18,10 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 ## Technical Debt / Tooling
 
 - [x] **Caching Layer**: Implement a file-system cache (e.g., in `~/.loadstone/cache`) with a configurable TTL (default 24h) to speed up repeated requests and reduce API load.
-- [x] **Global Bun Path**: Resolve the absolute path requirement for Bun by ensuring the local environment is properly sourced or providing a wrapper script.
+- [x] **Tool Paths**: Provision Node.js and pnpm through mise and document pnpm's global bin setup.
 - [x] **Binary Distribution**: Set up a build step to produce a single-file executable for easier installation.
-- [x] **Dependency Security**: Upgrade Vitest and its UI to v5, refresh vulnerable dependencies, and override esbuild to a patched release until tsup updates its dependency range.
+- [x] **Dependency Security**: Upgrade to Vitest 5; Vite Plus now manages the test and packaging dependencies, replacing tsup and its esbuild override.
+
+- [x] **Codex Skill Setup**: Document mise/pnpm-based local installation and Codex skill installation; correct headings examples and explain fresh profile queries and quest-data limitations.
+
+- [x] **Tooling migration**: Use mise-pinned Node.js and pnpm, with Vite Plus for packaging, tests, linting, formatting, and workspace task execution.

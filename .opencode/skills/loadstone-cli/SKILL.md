@@ -3,7 +3,7 @@ name: loadstone-cli
 description: Use the Loadstone CLI to search the RuneScape 3 Wiki for quests or item information and RuneMetrics for character information like levels, status, quests completion. Use when the user asks for RS3 wiki data, Ironman-focused answers, RuneMetrics stats, or when they want CLI command guidance for Loadstone.
 metadata:
   author: loadstone
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Loadstone CLI Skill
@@ -19,13 +19,19 @@ Use this skill to operate the Loadstone CLI in this repository and return data f
 
 ## Required context
 
-- Prefer `--json` when the user wants structured output.
+- Use current RuneScape 3 data, not OSRS methods. Prefer fresh CLI results over earlier conversation levels or resource counts; RuneMetrics does not report bank contents or equipment.
+- Resolve the character name from an explicit user statement or local configuration. Ask if missing; never infer it from the operating-system username.
+- Prefer `--json` for data retrieval. Use `--no-cache` when checking current progress or current Wiki requirements; the default cache TTL is 24 hours.
+- Skill values in normal profile output are levels, not per-skill XP. Do not infer exact remaining XP from a level.
+- Separate verified data from estimates, especially training times.
 
 ## Command usage
 
 ```bash
 loadstone <command> [args] [options]
 ```
+
+Check availability with `command -v loadstone` and inspect `loadstone --help` for supported commands. If missing, locate the user's checkout and follow its README source-install instructions using mise and pnpm. The bundled executable requires Node.js. Do not silently install a different published version.
 
 ## Profile data workflow
 
@@ -44,37 +50,40 @@ Examples:
 
 ```bash
 # Get only skill levels
-loadstone profile "Some Player" --json --skills-only
+loadstone profile "Some Player" --json --skills-only --no-cache
 ```
 
 ```bash
 # Get only completed quests
-loadstone profile "Some Player" --json --completed-quests-only
+loadstone profile "Some Player" --json --completed-quests-only --no-cache
 ```
 
 ```bash
 # Get only started quests
-loadstone profile "Some Player" --json --started-quests-only
+loadstone profile "Some Player" --json --started-quests-only --no-cache
 ```
 
 ## Page content workflow
 
-- First request available headings with `--headings`.
+- First request available headings with `--json --headings`.
 - Choose only the headings relevant to the user request.
-- Request those sections with `--fields "Heading 1","Heading 2"`.
+- Request those sections with `--fields "Heading 1,Heading 2"`.
 
 Examples:
 
 ```bash
-loadstone page "Abyssal whip" --headings
+loadstone page "Abyssal whip" --json --headings --no-cache
 ```
 
 ```bash
-loadstone page "Abyssal whip" --fields "Usage","Drop sources" --json
+loadstone page "Abyssal whip" --fields "Usage,Drop sources" --json --no-cache
 ```
 
 ## Output handling
 
 - If the user asks for data, prefer `--json` and return structured results.
 - If the user asks for a summary, parse JSON and provide a concise summary.
-- If a command fails, return the error and offer a fix (missing command, network, rate limit).
+- Inspect both JSON and stderr: a command may exit successfully while returning an error object. A private or unavailable profile is not a zero-level account.
+- Quest API failure can currently produce an empty quest list without an error. Treat an empty list as unverified, not proof of no completed quests; compare full-profile quest counters and report the limitation if necessary.
+- If a command fails, report the failure (missing command, network, rate limit). Do not present cached or remembered data as freshly verified.
+- Cite the returned Wiki URL when using its information in an answer.

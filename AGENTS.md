@@ -4,11 +4,11 @@ This document provides essential information for AI coding agents working with t
 
 ## Project Overview
 
-**Loadstone** is a CLI tool for accessing the RuneScape 3 Wiki, designed to assist Ironman players and power LLM agents with structured game data. It's built as a Turborepo monorepo using:
+**Loadstone** is a CLI tool for accessing the RuneScape 3 Wiki, designed to assist Ironman players and power LLM agents with structured game data. It's built as a Vite Plus monorepo using:
 
-- **Runtime**: Bun (v1.2.1+)
+- **Runtime**: Node.js (pinned in mise.toml)
 - **Language**: TypeScript (strict mode)
-- **Monorepo**: Turborepo
+- **Monorepo**: Vite Plus
 - **CLI Framework**: Commander.js
 - **HTML Parsing**: Cheerio
 
@@ -22,25 +22,26 @@ loadstone/
 │       │   ├── commands/ # Individual command implementations
 │       │   └── index.ts  # CLI entry point (Commander.js setup)
 │       ├── package.json
-│       └── tsup.config.ts
+│       └── vite.config.ts
 ├── packages/
 │   ├── wiki-client/      # Shared library for Wiki/RuneMetrics API
-│   ├── tsconfig/         # Shared TypeScript configs
-│   └── eslint-config/    # Shared ESLint config
+│   └── tsconfig/         # Shared TypeScript configs
 ├── package.json          # Root workspace config
-├── turbo.json           # Turborepo configuration
+├── vite.config.ts        # Vite Plus configuration
+├── mise.toml             # Pinned Node.js and pnpm tools
+├── pnpm-workspace.yaml   # Workspace packages and toolchain catalog
 └── tasks.md             # Feature roadmap and TODOs
 ```
 
 ## Key Conventions
 
-### 1. Package Manager: **Bun Only**
+### 1. Package Manager: **pnpm Only**
 
-- **Always use `bun` commands**, never `npm` or `yarn`
-- Install dependencies: `bun install`
-- Run scripts: `bun run <script>`
-- Execute TypeScript directly: `bun run src/index.ts`
-- The project uses `bun.lock` (not `package-lock.json` or `yarn.lock`)
+- **Always use `pnpm` commands**, never `npm` or `yarn`
+- Install dependencies: `pnpm install`
+- Run scripts: `pnpm run <script>`
+- Build and execute via Node.js: `pnpm start` (from apps/cli)
+- Run `mise trust && mise install` to provision pinned Node.js and pnpm. The project uses `pnpm-lock.yaml` (not `package-lock.json` or `yarn.lock`)
 
 ### 2. Workspace Dependencies
 
@@ -171,7 +172,7 @@ The project uses **Vitest** for unit testing. All code changes must include test
 
 ```typescript
 // Example: packages/wiki-client/src/parseWikiContent.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { parseWikiContent } from "./index";
 
 describe("parseWikiContent", () => {
@@ -190,7 +191,7 @@ CLI command tests should mock dependencies:
 
 ```typescript
 // Example: apps/cli/src/commands/search.test.ts
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { search } from "./search";
 import * as wikiClient from "@loadstone/wiki-client";
 
@@ -222,14 +223,14 @@ describe("search command", () => {
 
 ```bash
 # Run all tests
-bun run test
+pnpm run test
 
 # Run tests in watch mode
-bun run test:watch
+pnpm run test:watch
 
 # Run tests for a specific package
 cd packages/wiki-client
-bun run test
+pnpm run test
 ```
 
 **Test Coverage:**
@@ -249,8 +250,8 @@ bun run test
 
 ### 11. Building and Distribution
 
-- **Build tool**: `tsup` (configured in `apps/cli/tsup.config.ts`)
-- **Build command**: `bun run build` (runs via Turborepo)
+- **Build tool**: `vp pack` (configured in `apps/cli/vite.config.ts`)
+- **Build command**: `pnpm run build` (runs via Vite Plus)
 - **Output**: `dist/index.js` (CommonJS, bundled, executable)
 - **Shebang**: Automatically added (`#!/usr/bin/env node`)
 - **Dependencies**: Bundled (no external deps needed)
@@ -289,23 +290,23 @@ bun run test
    - Mock dependencies appropriately
 
 5. **Test locally**:
-   - Run tests: `bun run test`
-   - Run dev mode: `bun run dev` (watch mode)
-   - Manual test: `bun run start`
+   - Run tests: `pnpm run test`
+   - Run dev mode: `pnpm run dev` (watch mode)
+   - Manual test: `pnpm run start`
 
-6. **Build**: `bun run build` (from root)
+6. **Build**: `pnpm run build` (from root)
 
-7. **Verify**: Ensure `bun run test` and `bun run lint` both pass
+7. **Verify**: Ensure `pnpm run test` and `pnpm run lint` both pass
 
 ### Running Commands Locally
 
 ```bash
 # Development mode (watch)
-bun run dev
+pnpm run dev
 
 # Run directly
 cd apps/cli
-bun run src/index.ts search "Abyssal whip"
+pnpm start search "Abyssal whip"
 
 # After building
 cd apps/cli
@@ -316,17 +317,17 @@ cd apps/cli
 
 **⚠️ CRITICAL: All changes MUST pass tests and type checking before completion.**
 
-1. **Type checking**: `bun run check-types` (in each package) or `bun run test` (includes type checking)
-2. **Unit tests**: `bun run test` (from root, runs via Turborepo)
-3. **Linting**: `bun run lint` (from root, runs via Turborepo)
+1. **Type checking**: `pnpm run check-types` from the root (separate from tests)
+2. **Unit tests**: `pnpm run test` (from root, runs via Vite Plus)
+3. **Linting**: `pnpm run lint` (from root, runs via Vite Plus)
 4. **Manual testing**: Run commands with various inputs
 5. **JSON output**: Test with `--json` flag for LLM compatibility
 
 **Validation Requirements:**
 
-- ✅ All tests must pass: `bun run test`
-- ✅ TypeScript must compile without errors: `bun run check-types` (or included in test)
-- ✅ No linting errors: `bun run lint`
+- ✅ All tests must pass: `pnpm run test`
+- ✅ TypeScript must compile without errors: `pnpm run check-types` (separate from tests)
+- ✅ No linting errors: `pnpm run lint`
 - ✅ All new code must have corresponding tests
 
 ## Common Patterns
@@ -381,8 +382,8 @@ export async function command(args: string, options: Options) {
 
 ### ⚠️ Do NOT:
 
-1. **Don't use npm/yarn**: Always use `bun`
-2. **Don't modify `bun.lock` manually**: Let Bun manage it
+1. **Don't use npm/yarn**: Always use `pnpm`
+2. **Don't modify `pnpm-lock.yaml` manually**: Let pnpm manage it
 3. **Don't add `node_modules` to git**: Already in `.gitignore`
 4. **Don't commit `dist/` files**: Build artifacts are gitignored
 5. **Don't use `any` without justification**: Type everything properly
@@ -399,15 +400,15 @@ export async function command(args: string, options: Options) {
 6. **Export types**: Export interfaces/types from wiki-client
 7. **Update tasks.md**: Mark completed features in the roadmap
 8. **Write tests for all new code**: Every function and command must have tests
-9. **Ensure tests pass**: Run `bun run test` before completing any changes
-10. **Verify TypeScript compliance**: Ensure `bun run check-types` passes
+9. **Ensure tests pass**: Run `pnpm run test` before completing any changes
+10. **Verify TypeScript compliance**: Ensure `pnpm run check-types` passes
 
-## Turborepo Considerations
+## Vite Plus Considerations
 
-- **Task dependencies**: Defined in `turbo.json`
-- **Caching**: Build outputs are cached (see `turbo.json`)
-- **Parallel execution**: Turborepo runs tasks in parallel when possible
-- **Workspace awareness**: Always run commands from root, Turborepo handles workspace execution
+- **Workspace tasks**: Root scripts use `vp run -r` for builds and tests.
+- **Configuration**: Package `vite.config.ts` files define packaging and tests; the root config defines linting and formatting.
+- **Parallel execution**: Vite Plus runs tasks in parallel when possible
+- **Workspace awareness**: Always run commands from root, Vite Plus handles workspace execution
 
 ## API Endpoints
 
@@ -459,9 +460,9 @@ If you're unsure about:
 
 Before completing any changes, ensure:
 
-- [ ] All tests pass: `bun run test`
-- [ ] TypeScript compiles: `bun run check-types` (or included in test)
-- [ ] Linting passes: `bun run lint`
+- [ ] All tests pass: `pnpm run test`
+- [ ] TypeScript compiles: `pnpm run check-types` (separate from tests)
+- [ ] Linting passes: `pnpm run lint`
 - [ ] New code has corresponding tests
 - [ ] Tests cover edge cases and error handling
 - [ ] Code follows existing patterns and conventions
