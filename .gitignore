@@ -27,7 +27,8 @@ ts-debug.log*
 .env.test.local
 .env.production.local
 
-# Turbo
+# Vite Plus
+.vite
 .turbo
 
 # Editor
@@ -37,6 +38,4 @@ ts-debug.log*
 !.vscode/tasks.json
 .idea
 
-# Bun
-.bun
-bun.lockb
+.vitest/

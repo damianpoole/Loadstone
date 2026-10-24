@@ -28,13 +28,13 @@ Use this skill to operate the Loadstone CLI in this repository and return data f
 ## Command usage
 
 > [!IMPORTANT]
-> The `loadstone` command MUST be available on the user's PATH. Do not attempt to run it via `bun run`, `npm run`, or by pointing to source files directly.
+> The `loadstone` command MUST be available on the user's PATH. Do not attempt to run it via `pnpm run`, `npm run`, or by pointing to source files directly.
 
 ```bash
 loadstone <command> [args] [options]
 ```
 
-Check availability with `command -v loadstone` and inspect `loadstone --help` for supported commands. If missing, locate the user's checkout and follow its README source-install instructions using Bun. The bundled executable requires Node.js. Do not silently install a different published version.
+Check availability with `command -v loadstone` and inspect `loadstone --help` for supported commands. If missing, locate the user's checkout and follow its README source-install instructions using mise and pnpm. The bundled executable requires Node.js. Do not silently install a different published version.
 
 ## Profile data workflow
 

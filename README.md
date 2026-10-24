@@ -2,7 +2,7 @@
 
 A powerful CLI tool for accessing the [RuneScape 3 Wiki](https://runescape.wiki/), designed to assist Ironman players and power LLM agents with structured game data.
 
-Built with **Bun**, **Turborepo**, and **TypeScript**.
+Built with **Node.js**, **pnpm**, **Vite Plus**, and **TypeScript**, with tools pinned by **mise**.
 
 ## Features
 
@@ -22,30 +22,32 @@ Built with **Bun**, **Turborepo**, and **TypeScript**.
 Install directly from NPM to use the CLI globally:
 
 ```bash
-bun install -g loadstone-rs3
+pnpm add -g loadstone-rs3
 ```
 
-_Note: Requires Node.js installed on your system._
+_Note: Source builds require Node.js 24.19+ on the 24.x line, or Node.js 26+. The repository pins Node.js 24.19.0 with mise._
 
 ### For Developers (Source Code)
 
 If you want to contribute or build locally:
 
-1.  **Prerequisites**: [Bun](https://bun.sh/) (v1.2.1+) and [Node.js](https://nodejs.org/) (v22.12+ for Vitest 5)
+1.  **Prerequisites**: [mise](https://mise.jdx.dev/). Activate mise in your shell; mise.toml pins Node.js and pnpm.
 2.  **Setup**:
     ```bash
     git clone https://github.com/damianpoole/Loadstone.git
     cd Loadstone
-    bun install
-    bun run build
+    mise trust
+    mise install
+    pnpm install --frozen-lockfile
+    pnpm run build
     ```
 3.  **Link**:
     ```bash
     cd apps/cli
-    bun link
+    pnpm link --global
     ```
 
-Ensure Bun's global bin directory (`bun pm bin -g`) is on your PATH. The linked
+Run `pnpm setup` if needed and ensure pnpm's global bin directory (`pnpm bin -g`) is on your PATH. The linked
 `loadstone` command runs the local bundle through Node.js; rebuild after source changes.
 
 ### Codex skill
@@ -123,16 +125,22 @@ loadstone page "Abyssal whip" --no-cache
 - `apps/cli`: The main command-line application.
 - `packages/wiki-client`: Shared library for RS3 Wiki and RuneMetrics API interaction.
 - `packages/tsconfig`: Shared TypeScript configuration.
-- `packages/eslint-config`: Shared ESLint configuration.
 
 ## Development
 
-This project uses [Turborepo](https://turbo.build/) to manage the workspace.
+This project uses pnpm workspaces and [Vite Plus](https://viteplus.dev/) for task execution, packaging, tests, linting, and formatting. Run `mise run check` for type checking, linting, tests, and a production build.
 
 ```bash
-# Run dev mode (watch)
-bun run dev
+# Rebuild the CLI on source changes (run dist/index.js separately)
+pnpm run dev
 
 # Lint all packages
-bun run lint
+pnpm run lint
+
+# Type check and test all packages
+pnpm run check-types
+pnpm run test
+
+# Build and run the CLI
+pnpm start --help
 ```
