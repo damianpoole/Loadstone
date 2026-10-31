@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
-import TextInput from "ink-text-input";
+import { ChatInput, mouseReport } from "./chat-input";
 import wrapAnsi from "wrap-ansi";
 import stripAnsi from "strip-ansi";
 import type { Controller, AppState } from "./controller";
@@ -31,7 +31,8 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
   const [input, setInput] = useState("");
   const [tab, setTab] = useState<"chat" | "memory">("chat");
-  const [scroll, setScroll] = useState(0);
+  // null follows the tail; a line index anchors the viewport while new text streams in.
+  const [topLine, setTopLine] = useState<number | null>(null);
   const { stdout } = useStdout();
   const [size, setSize] = useState({ columns: stdout.columns || 80, rows: stdout.rows || 24 });
   useEffect(() => {
@@ -41,14 +42,34 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
       stdout.off("resize", resize);
     };
   }, [stdout]);
+  useEffect(() => {
+    if (!stdout.isTTY || process.env.LOADSTONE_MOUSE === "0") return;
+    stdout.write("\x1b[?1000h\x1b[?1006h");
+    return () => {
+      stdout.write("\x1b[?1006l\x1b[?1000l");
+    };
+  }, [stdout]);
   const sidebar = size.columns >= 100;
   const bodyHeight = Math.max(3, size.rows - 8);
   const width = Math.max(10, size.columns - (sidebar ? 34 : 2));
   const lines = screenLines(state, tab, width);
   const maxScroll = Math.max(0, lines.length - bodyHeight);
-  const effectiveScroll = Math.min(scroll, maxScroll);
-  const start = Math.max(0, lines.length - bodyHeight - effectiveScroll);
+  const start = topLine === null ? maxScroll : Math.min(topLine, maxScroll);
+  const scrolled = start < maxScroll;
+  const move = (delta: number) =>
+    setTopLine((current) => {
+      const next = Math.max(0, Math.min(current ?? maxScroll, maxScroll) + delta);
+      return next >= maxScroll ? null : next;
+    });
   useInput((text, key) => {
+    const mouse = mouseReport(text);
+    if (mouse) {
+      // Ignore clicks, releases and horizontal wheel events; modifier bits are independent.
+      if (mouse.pressed && mouse.button & 64 && !(mouse.button & 2)) {
+        move(mouse.button & 1 ? 3 : -3);
+      }
+      return;
+    }
     if (key.ctrl && text === "c") {
       onQuit();
       return;
@@ -59,10 +80,14 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
     }
     if (key.tab) {
       setTab((t) => (t === "chat" ? "memory" : "chat"));
-      setScroll(0);
+      setTopLine(null);
     }
-    if (key.pageUp) setScroll((s) => Math.min(maxScroll, s + bodyHeight));
-    if (key.pageDown) setScroll((s) => Math.max(0, s - bodyHeight));
+    if (key.pageUp) move(-Math.max(1, bodyHeight - 1));
+    if (key.pageDown) move(Math.max(1, bodyHeight - 1));
+    if (key.upArrow) move(-3);
+    if (key.downArrow) move(3);
+    if (key.home) setTopLine(0);
+    if (key.end) setTopLine(null);
   });
   const submit = (value: string) => {
     if (value.trim() === "/quit") {
@@ -71,7 +96,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
     }
     if (state.processing) return;
     setInput("");
-    setScroll(0);
+    setTopLine(null);
     setTab("chat");
     void controller.execute(value);
   };
@@ -140,25 +165,20 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
       </Box>
       <Text color="yellow" wrap="truncate-end">
         {plainText(
-          state.view.failure
-            ? `${state.view.failure} — /retry`
-            : state.view.activity.join(" | ") ||
-                (effectiveScroll
-                  ? `Scrolled ${effectiveScroll} lines — PageDown returns to latest`
-                  : "Memory changes: /history • Conflicts: /pending • Older messages: /earlier"),
+          scrolled
+            ? `Lines ${start + 1}–${Math.min(start + bodyHeight, lines.length)} of ${lines.length} • End: latest • /earlier: load older messages`
+            : state.view.failure
+              ? `${state.view.failure} — /retry`
+              : state.view.activity.join(" | ") ||
+                "Memory changes: /history • Conflicts: /pending • Older messages: /earlier",
         )}
       </Text>
       <Box borderStyle="single" borderColor="cyan">
         <Text color="cyan">› </Text>
-        <TextInput
-          value={input}
-          onChange={setInput}
-          onSubmit={submit}
-          placeholder="Chat or /help"
-        />
+        <ChatInput value={input} onChange={setInput} onSubmit={submit} />
       </Box>
       <Text dimColor wrap="truncate-end">
-        Tab: chat/memory • PgUp/PgDn: scroll • Esc: cancel • /help • /quit
+        ↑↓/Wheel: scroll • PgUp/PgDn: page • Home/End • Tab • Esc: cancel • /help
       </Text>
     </Box>
   );

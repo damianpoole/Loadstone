@@ -37,6 +37,75 @@ it("wraps chat for small terminals and labels item memory as last observed", () 
   expect(screenLines({ ...state, facts }, "memory", 100).join("\n")).toContain("last observed");
 });
 describe("Ink screen", () => {
+  it("scrolls long responses with arrows, pages, Home/End and the mouse without editing the draft", async () => {
+    let current: AppState = {
+      ...state,
+      view: {
+        ...state.view,
+        partial: "",
+        messages: [
+          {
+            id: "long",
+            role: "Assistant",
+            text: Array.from(
+              { length: 120 },
+              (_, i) => `Response line ${String(i).padStart(3, "0")}`,
+            ).join("\n"),
+          },
+        ],
+      },
+    };
+    let notify = () => {};
+    const execute = vi.fn();
+    const controller = {
+      snapshot: () => current,
+      subscribe: (listener: () => void) => {
+        notify = listener;
+        return () => {};
+      },
+      execute,
+      cancel: vi.fn(),
+      report: vi.fn(),
+    } as unknown as Controller;
+    const ui = render(<App controller={controller} onQuit={vi.fn()} />);
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("Response line 119"));
+    ui.stdin.write("draft");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("draft"));
+    ui.stdin.write("\x1b[5~");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("Lines "));
+    expect(ui.lastFrame()).not.toContain("Response line 119");
+    const page = ui.lastFrame();
+    ui.stdin.write("\x1b[A");
+    await vi.waitFor(() => expect(ui.lastFrame()).not.toBe(page));
+    ui.stdin.write("\x1b[H");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("Response line 000"));
+    // Appending streamed content must not drag a scrolled viewport down.
+    current = {
+      ...current,
+      view: {
+        ...current.view,
+        partial: Array.from({ length: 20 }, (_, i) => `New streaming line ${i}`).join("\n"),
+      },
+    };
+    notify();
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("of 141"));
+    expect(ui.lastFrame()).toContain("Response line 000");
+    ui.stdin.write("\x1b[<65;12;8M");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("Lines 4–"));
+    expect(ui.lastFrame()).not.toContain("Response line 000");
+    // Fragmented wheel-up report is assembled by Ink before dispatch.
+    ui.stdin.write("\x1b[<64;");
+    ui.stdin.write("12;8M");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("Response line 000"));
+    ui.stdin.write("\x1b[F");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("New streaming line 19"));
+    ui.stdin.write("\x1b[5~");
+    await vi.waitFor(() => expect(ui.lastFrame()).not.toContain("New streaming line 19"));
+    ui.stdin.write("\x1b[6~");
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("New streaming line 19"));
+    ui.stdin.write("\r");
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith("draft"));
+  });
   it("renders streaming/tool state and handles chat, tabs, cancellation and quit", async () => {
     const execute = vi.fn().mockResolvedValue(undefined);
     const cancel = vi.fn().mockResolvedValue(undefined);

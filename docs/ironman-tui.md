@@ -111,7 +111,17 @@ The UI shows “saved” only after the SQLite transaction commits.
 - **Enter:** send a message/command. Paste text, then press Enter to send.
 - **Esc:** cancel the active agent run or manual RuneMetrics sync. Cancelling does
   not undo already committed memory; use `/undo` if needed.
-- **PageUp / PageDown:** scroll the current view.
+- **↑ / ↓ or mouse wheel/trackpad:** scroll the current view three lines at a time.
+- **PageUp / PageDown:** scroll one page with a line of overlap (Mac: **Fn+↑ / Fn+↓**).
+- **Home / End:** jump to the oldest loaded text / latest output (Mac: **Fn+← / Fn+→**).
+- Scrolling back pauses automatic following: streamed text will not drag you away
+  from what you are reading. Scroll to the bottom or press End to follow again.
+  The status line shows your position. `/earlier` loads older persisted messages
+  beyond the currently loaded conversation; Home then jumps to their beginning.
+- The app uses an alternate screen, so terminal scrollback is not the conversation
+  history. Mouse reporting is enabled while the TUI is open and disabled on exit.
+  Hold **Shift** for native selection/scrolling in terminals that support it, or
+  set **`LOADSTONE_MOUSE=0`** to disable mouse capture and use keyboard scrolling.
 - **Tab:** switch between chat and the memory view.
 - **Ctrl+C / `/quit`:** orderly shutdown, preserving unfinished agent work for resume.
 - Wide terminals show a character/goals/recent-memory sidebar; narrow ones show chat only.

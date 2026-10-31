@@ -32,7 +32,8 @@ export const HELP = `Chat normally to ask for advice or report progress. Clear f
 /model PROVIDER MODEL_ID • /model pi • /models [filter] • /auth
 /export — character JSON including history; /backup — all memory and sessions
 /quit — save and quit (unfinished agent work resumes on reopen)
-Esc — cancel agent/sync • PageUp/PageDown — scroll • Tab — chat/memory
+Esc — cancel agent/sync • ↑/↓ or mouse wheel — scroll • PageUp/PageDown — page
+Home/End — oldest/latest loaded text • Tab — chat/memory (Mac: Fn+↑/↓ pages)
 Facts: skill=1–120, quest=COMPLETED|STARTED|NOT_STARTED, unlock=true|false,
 item={"owned":true,"quantity":1}, goal="active"|"paused"|"completed", preference/note=text.
 Unknown is not false. Items are last reported, not a live bank. /help shows this again.`;

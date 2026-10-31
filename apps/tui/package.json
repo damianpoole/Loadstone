@@ -19,7 +19,6 @@
     "@loadstone/agent": "workspace:*",
     "@loadstone/memory": "workspace:*",
     "ink": "^7.1.1",
-    "ink-text-input": "^6.0.0",
     "proper-lockfile": "^4.1.2",
     "react": "^19.2.0",
     "strip-ansi": "^7.1.0",
