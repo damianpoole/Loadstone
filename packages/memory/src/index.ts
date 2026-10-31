@@ -44,6 +44,8 @@ export interface Update {
 }
 export interface Receipt {
   id: string;
+  /** Undo audit link; restored facts retain their original provenance. */
+  undoOf?: string;
   status: "saved" | "review" | "rejected";
   conflicts: string[];
   changes: { before: Fact | null; after: Fact | null; kind: FactKind; key: string }[];
@@ -211,7 +213,7 @@ export class MemoryStore {
   apply(update: Update): Receipt {
     return this.transaction(() => this.applyInside(update));
   }
-  private applyInside(update: Update, approved = false): Receipt {
+  private applyInside(update: Update): Receipt {
     this.character(update.characterId);
     const prior = this.receipt(update.characterId, update.operationId);
     if (prior) return prior; // The durable task's receipt wins even after undo or later updates.
@@ -277,11 +279,15 @@ export class MemoryStore {
     });
     const receipt: Receipt = {
       id: update.operationId,
-      status: conflicts.length && !approved ? "review" : "saved",
+      status: conflicts.length ? "review" : "saved",
       conflicts,
       changes,
     };
     if (receipt.status === "saved") this.writeFacts(update.characterId, changes);
+    this.recordOperation(update, receipt);
+    return receipt;
+  }
+  private recordOperation(update: Update, receipt: Receipt) {
     this.db
       .prepare("INSERT INTO operations VALUES (?, ?, ?, ?, ?)")
       .run(
@@ -291,7 +297,6 @@ export class MemoryStore {
         JSON.stringify(receipt),
         Date.now(),
       );
-    return receipt;
   }
   private writeFacts(characterId: string, changes: Receipt["changes"]) {
     for (const change of changes) {
@@ -339,21 +344,35 @@ export class MemoryStore {
           JSON.stringify(change.after)
         )
           throw new Error("A newer update affects these facts; undo that update first.");
-      return this.applyInside(
-        {
-          characterId,
-          operationId: randomUUID(),
-          source: "user",
-          observedAt: Date.now(),
-          evidence: `User undid ${id}`,
-          changes: receipt.changes.map((c) => ({
-            kind: c.kind,
-            key: c.key,
-            value: c.before?.value ?? null,
-          })),
-        },
-        true,
-      );
+      const request: Update = {
+        characterId,
+        operationId: randomUUID(),
+        source: "user",
+        observedAt: Date.now(),
+        evidence: `User undid ${id}`,
+        changes: receipt.changes.map((c) => ({
+          kind: c.kind,
+          key: c.key,
+          value: c.before?.value ?? null,
+        })),
+      };
+      // Invert the exact snapshots, not just their values. Rebuilding facts would
+      // destroy the identity needed to undo earlier operations and lose provenance.
+      const undo: Receipt = {
+        id: request.operationId,
+        undoOf: id,
+        status: "saved",
+        conflicts: [],
+        changes: receipt.changes.map((c) => ({
+          kind: c.kind,
+          key: c.key,
+          before: c.after,
+          after: c.before,
+        })),
+      };
+      this.writeFacts(characterId, undo.changes);
+      this.recordOperation(request, undo);
+      return undo;
     });
   }
   createSession(characterId: string): ChatSession {

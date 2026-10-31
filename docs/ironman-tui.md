@@ -207,6 +207,9 @@ network timeout and cancellation support.
   conflict does not prevent safe skill updates.
 - Approval refuses a proposal if affected facts changed since it was made. Reject
   it and make a fresh update. Undo similarly refuses to overwrite newer changes.
+  It restores each exact previous fact, including its original provenance, so you
+  can undo successive updates in reverse order. Each undo has its own audit
+  receipt with an `undoOf` link; original receipts remain intact for replay safety.
 
 RuneMetrics does not expose a complete bank, relevant equipment, or unlock list.
 Report those in chat or with `/set`. An API can itself lag behind the game even

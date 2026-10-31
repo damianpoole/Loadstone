@@ -112,7 +112,7 @@ describe("TUI commands", () => {
     await controller.execute("/memory herb");
     expect(controller.state.notice).toContain("herblore");
     await controller.execute("/history");
-    expect(controller.state.notice).toContain("User undid");
+    expect(controller.state.notice).toContain(`"undoOf": "${deletion}"`);
   });
   it("validates commands and forwards chat, model changes and cancellation", async () => {
     await controller.execute("Hello");

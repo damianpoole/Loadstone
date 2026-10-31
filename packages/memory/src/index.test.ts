@@ -72,6 +72,69 @@ describe("character memory", () => {
     expect(store.apply(request)).toEqual(receipt);
     expect(store.facts(id)).toEqual([]);
   });
+  it("restores exact snapshots so consecutive undos survive reopen and preserve replay receipts", () => {
+    const a = update(id, "A", [{ kind: "skill", key: "Herblore", value: 90 }], {
+      source: "runemetrics",
+      observedAt: 1000,
+      evidence: "Original RuneMetrics observation",
+    });
+    const b = update(id, "B", [{ kind: "skill", key: "Herblore", value: 91 }]);
+    const first = store.apply(a);
+    const original = store.facts(id);
+    const second = store.apply(b);
+    const undone = store.undo(id, "B");
+    expect(store.facts(id)).toEqual(original);
+    expect(undone).toMatchObject({
+      undoOf: "B",
+      status: "saved",
+      changes: [{ before: second.changes[0].after, after: first.changes[0].after }],
+    });
+    expect(undone.id).not.toBe("B");
+    expect(store.receipt(id, "B")).toEqual(second);
+    store.close();
+    store = new MemoryStore(join(dir, "memory.sqlite"));
+    expect(store.history(id)[0]).toEqual(undone);
+    expect(store.apply(b)).toEqual(second);
+    expect(store.facts(id)).toEqual(original);
+    store.undo(id, "A");
+    expect(store.facts(id)).toEqual([]);
+    expect(store.apply(a)).toEqual(first);
+    expect(store.apply(b)).toEqual(second);
+    expect(store.facts(id)).toEqual([]);
+    expect(store.history(id)).toHaveLength(4);
+  });
+  it("restores deleted facts and allows undoing the undo without rewriting provenance", () => {
+    const original = store.apply(update(id, "A", [{ kind: "skill", key: "Herblore", value: 90 }]));
+    store.apply(update(id, "B", [{ kind: "skill", key: "Herblore", value: null }]));
+    const deletion = store.review(id, "B", true);
+    const restore = store.undo(id, "B");
+    expect(store.facts(id)).toEqual([original.changes[0].after]);
+    const redo = store.undo(id, restore.id);
+    expect(redo.undoOf).toBe(restore.id);
+    expect(store.facts(id)).toEqual([]);
+    store.undo(id, redo.id);
+    expect(store.facts(id)).toEqual([original.changes[0].after]);
+    store.undo(id, "A");
+    expect(store.facts(id)).toEqual([]);
+    expect(store.receipt(id, "B")).toEqual(deletion);
+  });
+  it("still rejects undo over unrelated same-value writes and leaves entire batches untouched", () => {
+    store.apply(
+      update(id, "A", [
+        { kind: "skill", key: "Herblore", value: 90 },
+        { kind: "quest", key: "Druidic Ritual", value: "COMPLETED" },
+      ]),
+    );
+    store.apply(update(id, "B", [{ kind: "quest", key: "Druidic Ritual", value: "COMPLETED" }]));
+    const before = store.facts(id);
+    const history = store.history(id);
+    expect(() => store.undo(id, "A")).toThrow("newer update");
+    expect(store.facts(id)).toEqual(before);
+    expect(store.history(id)).toEqual(history);
+    store.undo(id, "B");
+    store.undo(id, "A");
+    expect(store.facts(id)).toEqual([]);
+  });
   it("rolls back an entire batch on invalid input", () => {
     expect(() =>
       store.apply(

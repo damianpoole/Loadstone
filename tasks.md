@@ -9,6 +9,7 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 - [x] **Conversation scrollback**: Mouse wheel/trackpad, arrow/page keys, Home/End, and a stable reading position during streamed responses; navigation never changes the draft.
 - [x] **Durable agent**: Pinned pi-durable integration, scoped wiki/memory tools, cancellation, model selection, replay-safe writes and bounded tool rounds.
 - [x] **Character memory**: SQLite skills, quests, items, unlocks, goals, preferences and notes with provenance, atomic history, conflict review and undo.
+- [x] **Consecutive undo recovery**: Restore exact prior fact identity/provenance, retain separate linked undo receipts, and preserve stale-write guards and durable replay safety.
 - [x] **Safe RuneMetrics sync**: Fresh, independently validated skill/quest snapshots; unavailable data never erases progress.
 - [x] **Local data controls**: Exclusive process lock, character export, full memory/session backup and documented restore/deletion.
 - [x] **Companion tests/docs**: Temporary SQLite, faux-model agent and interruption tests, Ink/command tests, provider and privacy guide.
