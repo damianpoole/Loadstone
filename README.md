@@ -72,14 +72,17 @@ that no quests are complete.
 
 ```bash
 # After installing workspace dependencies; requires an interactive terminal
-# Set OPENAI_API_KEY securely in your environment (or configure Anthropic/OpenRouter).
+# Reuses your existing pi login, including ChatGPT OAuth.
+# Or use LOADSTONE_AUTH=env with a provider API key.
 pnpm run tui
 ```
 
 Start with `/character YourRSN`, then `/sync`. Chat about goals and progress; the
 agent can save skills, quests, relevant items, unlocks, goals and preferences.
 Use `/memory`, `/history`, `/pending` and `/undo ID` to inspect and correct saves.
-Memory editing and RuneMetrics sync also work without a model key.
+Memory editing and RuneMetrics sync also work without model authentication.
+Use `/auth` to inspect credential status and `/model pi` to switch an existing
+session to pi's default model.
 
 See [the TUI guide](docs/ironman-tui.md) for provider configuration, keyboard controls,
 backup/restore, privacy, recovery guarantees and architecture. The TUI is currently

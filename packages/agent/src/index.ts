@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, type Models } from "@earendil-works/pi-ai/models";
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
-import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
+import type { Models } from "@earendil-works/pi-ai/models";
+import { createCompanionModels } from "./auth";
+export { createCompanionModels, createCompanionConnection } from "./auth";
+export type { CompanionConnection } from "./auth";
 import {
   Harness,
   createRegistry,
@@ -32,13 +32,6 @@ export interface AgentView {
   failure?: string;
   model?: ModelRef;
   hasEarlier: boolean;
-}
-export function createCompanionModels() {
-  const models = createModels();
-  models.setProvider(openaiProvider());
-  models.setProvider(anthropicProvider());
-  models.setProvider(openrouterProvider());
-  return models;
 }
 export function entryMessages(entry: EntryRecord): ChatMessage[] {
   if (entry.kind === "pi.system") return [];
@@ -103,7 +96,7 @@ export async function openCompanion(options: {
   onChange: (view: AgentView) => void;
   onError?: (error: string) => void;
 }) {
-  const models = options.models ?? createCompanionModels();
+  const models = options.models ?? (await createCompanionModels());
   const registry = createRegistry();
   registry.install(characterExtension(options.memory, options.characterId, options.sessionId));
   const harness = await Harness.open(
@@ -202,9 +195,16 @@ export async function openCompanion(options: {
         const agent = await root.agent(BACKGROUND_CONTEXT);
         if (!agent.model || !models.getModel(agent.model.provider, agent.model.modelId))
           throw new Error("Unknown model. Use /model PROVIDER MODEL_ID.");
-        if (!(await models.getAuth(agent.model.provider)))
+        const auth = await models
+          .getAuth(agent.model.provider, { signal: AbortSignal.timeout(35_000) })
+          .catch(() => {
+            throw new Error(
+              `Authentication failed for ${agent.model!.provider}. Reconnect with /login ${agent.model!.provider} in pi, then restart Loadstone, or check your environment credentials. Use /auth for status. No chat was sent.`,
+            );
+          });
+        if (!auth)
           throw new Error(
-            `Set credentials for ${agent.model.provider} in your environment, then restart. Memory and sync work without a model key.`,
+            `No credentials for ${agent.model.provider}. Sign in with /login ${agent.model.provider} in pi and restart Loadstone, or configure environment credentials. Use /auth for status and /model pi to use pi's default. Memory and sync work without model authentication.`,
           );
         failure = undefined;
         return track(

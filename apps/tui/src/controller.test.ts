@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { mkdtemp, readdir, readFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Controller } from "./controller";
@@ -23,12 +23,16 @@ describe("TUI commands", () => {
   const open = vi.fn(async () => agent as unknown as Companion);
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.stubEnv("LOADSTONE_AUTH", "env");
+    vi.stubEnv("LOADSTONE_PROVIDER", undefined);
+    vi.stubEnv("LOADSTONE_MODEL", undefined);
     home = await mkdtemp(join(tmpdir(), "loadstone-tui-"));
     controller = new Controller(home, open);
     await controller.initialize();
   });
   afterEach(async () => {
     await controller.close();
+    vi.unstubAllEnvs();
     await rm(home, { recursive: true, force: true });
   });
   it("onboards, creates sessions, switches characters and restores the selection", async () => {
@@ -50,6 +54,43 @@ describe("TUI commands", () => {
     controller = new Controller(home, open);
     await controller.initialize();
     expect(controller.state.character?.name).toBe("OtherIron");
+  });
+  it("uses pi's model for new sessions and respects explicit overrides", async () => {
+    vi.stubEnv("LOADSTONE_AUTH", "pi");
+    vi.stubEnv("PI_CODING_AGENT_DIR", home);
+    vi.stubEnv("LOADSTONE_PI_AUTH_PATH", "");
+    await writeFile(join(home, "auth.json"), "{}");
+    await writeFile(
+      join(home, "settings.json"),
+      JSON.stringify({ defaultProvider: "openai", defaultModel: "gpt-5.5" }),
+    );
+    await controller.execute("/character MyIron");
+    expect(open).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: { provider: "openai", modelId: "gpt-5.5" } }),
+    );
+    await controller.execute("/model openai gpt-4o-mini");
+    await controller.execute("/new");
+    expect(open).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: { provider: "openai", modelId: "gpt-4o-mini" } }),
+    );
+    vi.stubEnv("LOADSTONE_PROVIDER", "anthropic");
+    vi.stubEnv("LOADSTONE_MODEL", "claude-sonnet-4-5");
+    await controller.execute("/new");
+    expect(open).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: { provider: "anthropic", modelId: "claude-sonnet-4-5" } }),
+    );
+    await controller.execute("/model pi");
+    expect(agent.setModel).toHaveBeenLastCalledWith({ provider: "openai", modelId: "gpt-5.5" });
+  });
+  it("reports auth without a character and switches existing sessions to the connection default", async () => {
+    await controller.execute("/auth");
+    expect(controller.state.notice).toContain("Environment credentials only");
+    await controller.execute("/character MyIron");
+    await controller.execute("/model anthropic claude-sonnet-4-5");
+    await controller.execute("/model pi");
+    expect(agent.setModel).toHaveBeenLastCalledWith({ provider: "openai", modelId: "gpt-4o-mini" });
+    expect(controller.memory.setting("model")).toBe("gpt-4o-mini");
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ models: expect.any(Object) }));
   });
   it("supports memory review, rejection, corrections, undo and search", async () => {
     await controller.execute("/character MyIron");

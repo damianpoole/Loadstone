@@ -10,7 +10,8 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 - [x] **Safe RuneMetrics sync**: Fresh, independently validated skill/quest snapshots; unavailable data never erases progress.
 - [x] **Local data controls**: Exclusive process lock, character export, full memory/session backup and documented restore/deletion.
 - [x] **Companion tests/docs**: Temporary SQLite, faux-model agent and interruption tests, Ink/command tests, provider and privacy guide.
-- [ ] **Future companion improvements**: OAuth onboarding, optional save-everything confirmation mode, JSON import, and deterministic quest dependency planning.
+- [x] **Shared pi authentication**: Reuse existing ChatGPT OAuth via pi's public SDK and lock-protected refresh; pi model defaults, `/auth`, `/model pi`, and an explicit environment-only opt-out.
+- [ ] **Future companion improvements**: In-app OAuth login UI, optional save-everything confirmation mode, JSON import, and deterministic quest dependency planning.
 
 ## New Commands
 

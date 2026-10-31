@@ -81,6 +81,30 @@ describe("durable Ironman agent", () => {
     closers.push(close);
     return { faux, harness, root, close };
   }
+  it("gives safe login guidance before submitting chat when credentials are missing or refresh fails", async () => {
+    const faux = fauxProvider();
+    const models = createModels();
+    models.setProvider(faux.provider);
+    let latest: AgentView | undefined;
+    const companion = await openCompanion({
+      path: join(dir, "auth-session.sqlite"),
+      memory,
+      characterId: id,
+      sessionId: "auth-session",
+      models,
+      model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
+      onChange: (view) => {
+        latest = view;
+      },
+    });
+    closers.push(() => companion.close());
+    const auth = vi.spyOn(models, "getAuth").mockResolvedValue(undefined);
+    await expect(companion.send("Hello")).rejects.toThrow("Sign in with /login");
+    auth.mockRejectedValue(new Error("fixture-secret-token"));
+    await expect(companion.send("Hello")).rejects.toThrow("No chat was sent");
+    expect(latest?.messages).toEqual([]);
+    expect(memory.facts(id)).toEqual([]);
+  });
   it("lets the model save factual progress through a scoped validated tool", async () => {
     const { faux, root } = await setup();
     faux.setResponses([save("I hit 90 Herblore"), answer()]);

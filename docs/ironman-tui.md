@@ -12,10 +12,8 @@ Use the repository's pinned Node.js and pnpm versions:
 mise trust && mise install
 pnpm install --frozen-lockfile
 
-# Choose ONE provider and supply its key through your shell/secret manager.
-export LOADSTONE_PROVIDER=openai
-export LOADSTONE_MODEL=gpt-4o-mini
-# Set OPENAI_API_KEY securely in your environment; do not paste it into chat.
+# Already signed in to pi? Its existing login (including ChatGPT OAuth) is reused.
+# Otherwise, run /login openai inside pi, or configure an environment API key.
 pnpm run tui
 ```
 
@@ -24,7 +22,46 @@ prints setup and command help without requiring one. After building, run
 `node apps/tui/dist/index.js` directly. Keep the installed workspace dependencies
 and all files in `dist/`: this is an ESM application with chunks, not a standalone binary.
 
-Supported providers:
+## Authentication
+
+By default, Loadstone uses pi's public **ModelRuntime 1.4.0 SDK** and shared
+`~/.pi/agent/auth.json`. Existing ChatGPT OAuth does not require a separate API
+key. Token refresh uses the SDK's file locking and updates pi's original store;
+Loadstone does not copy tokens into its own database, exports or backups.
+Normal provider/subscription limits still apply.
+
+- `PI_CODING_AGENT_DIR` changes pi's directory (including `settings.json`).
+- `LOADSTONE_PI_AUTH_PATH` optionally selects another pi-format `auth.json`.
+- `/auth` shows the path and credential types, never keys or tokens. It does not
+  refresh tokens or make model requests. It is a startup snapshot, not a live
+  authentication check. Restart after logging in/out in pi.
+- New sessions use pi's valid `defaultProvider`/`defaultModel` from `settings.json`
+  unless Loadstone environment variables or a saved `/model` choice override them.
+  Without a pi preference, OpenAI OAuth defaults to `openai/gpt-5.5`.
+- **Existing sessions keep their model.** Use `/model pi` to switch to pi's default
+  (or the connection fallback if pi has no usable preference). This also updates
+  Loadstone's default for future sessions.
+- Stored pi credentials take precedence over environment keys. Set
+  `LOADSTONE_AUTH=env` to bypass pi completely and use environment-only auth.
+- No pi `models.json`, project settings, extensions, or coding tools are loaded.
+  Only built-in catalog models are selectable. This does **not** import OpenCode
+  credentials or provide a login UI: log in through pi itself.
+
+If pi's default auth file is absent, Loadstone falls back to environment credentials.
+An explicitly configured missing auth path is an error. If OAuth expires or refresh
+fails, sign in again in pi and restart; don't paste credentials into chat.
+
+Environment-only example:
+
+```bash
+export LOADSTONE_AUTH=env
+export LOADSTONE_PROVIDER=openai
+export LOADSTONE_MODEL=gpt-4o-mini
+# Supply OPENAI_API_KEY through your shell/secret manager.
+pnpm run tui
+```
+
+Environment-only providers (shared-pi mode also exposes pi's built-in catalog):
 
 | Provider     | Environment variable | Example model                            |
 | ------------ | -------------------- | ---------------------------------------- |
@@ -35,11 +72,10 @@ Supported providers:
 `/models FILTER` lists the pinned pi-ai catalog. `/model PROVIDER MODEL_ID` changes
 the current conversation and the default for new sessions. `LOADSTONE_PROVIDER`
 and `LOADSTONE_MODEL` override defaults for **new** sessions; existing sessions
-retain their chosen model. Restart after changing credentials. The app does not
-read pi coding-agent credentials or implement OAuth login.
+retain their chosen model. Restart after changing credential configuration.
 
 You can create characters, edit/browse memory, export/backup, and sync RuneMetrics
-without a model key. Only chat needs one. There are no background model calls for
+without model authentication. Only chat needs it. There are no background model calls for
 new characters; reopening a session with unfinished work resumes that work.
 
 ## First conversation
@@ -80,28 +116,28 @@ The UI shows “saved” only after the SQLite transaction commits.
 - **Ctrl+C / `/quit`:** orderly shutdown, preserving unfinished agent work for resume.
 - Wide terminals show a character/goals/recent-memory sidebar; narrow ones show chat only.
 
-| Command                                        | Purpose                                                                       |
-| ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| `/help`                                        | Show help                                                                     |
-| `/character [RSN]`                             | List or select/create characters                                              |
-| `/create MODE RSN`                             | Create an Ironman, hardcore, or group-ironman                                 |
-| `/sync`                                        | Fresh skills and quests from RuneMetrics                                      |
-| `/memory [query]`                              | Search facts with provenance                                                  |
-| `/goals [query]`                               | Browse goals                                                                  |
-| `/history`                                     | Last 30 operations, including previous values                                 |
-| `/pending`                                     | Inspect proposed changes and conflicts                                        |
-| `/approve ID`, `/reject ID`                    | Resolve a pending proposal explicitly                                         |
-| `/undo ID`                                     | Reverse a saved operation if its affected facts have not changed since        |
-| `/set KIND KEY = JSON`                         | Manually set/correct a fact                                                   |
-| `/forget KIND KEY`                             | Propose deletion; requires `/approve ID`                                      |
-| `/new`                                         | New conversation, retaining character memory                                  |
-| `/sessions`                                    | List the active character's sessions                                          |
-| `/resume SESSION_ID`                           | Open one of those sessions                                                    |
-| `/earlier`                                     | Load 50 older stored entries, including history before compaction             |
-| `/retry`                                       | Retry parked crash-loop tasks, or send an explicit continuation after failure |
-| `/models [filter]`, `/model PROVIDER MODEL_ID` | Model configuration                                                           |
-| `/export`                                      | Export character facts and audit history to a private JSON file               |
-| `/backup`                                      | Consistent local backup of all character memory and sessions                  |
+| Command                                                              | Purpose                                                                       |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `/help`                                                              | Show help                                                                     |
+| `/character [RSN]`                                                   | List or select/create characters                                              |
+| `/create MODE RSN`                                                   | Create an Ironman, hardcore, or group-ironman                                 |
+| `/sync`                                                              | Fresh skills and quests from RuneMetrics                                      |
+| `/memory [query]`                                                    | Search facts with provenance                                                  |
+| `/goals [query]`                                                     | Browse goals                                                                  |
+| `/history`                                                           | Last 30 operations, including previous values                                 |
+| `/pending`                                                           | Inspect proposed changes and conflicts                                        |
+| `/approve ID`, `/reject ID`                                          | Resolve a pending proposal explicitly                                         |
+| `/undo ID`                                                           | Reverse a saved operation if its affected facts have not changed since        |
+| `/set KIND KEY = JSON`                                               | Manually set/correct a fact                                                   |
+| `/forget KIND KEY`                                                   | Propose deletion; requires `/approve ID`                                      |
+| `/new`                                                               | New conversation, retaining character memory                                  |
+| `/sessions`                                                          | List the active character's sessions                                          |
+| `/resume SESSION_ID`                                                 | Open one of those sessions                                                    |
+| `/earlier`                                                           | Load 50 older stored entries, including history before compaction             |
+| `/retry`                                                             | Retry parked crash-loop tasks, or send an explicit continuation after failure |
+| `/models [filter]`, `/model PROVIDER MODEL_ID`, `/model pi`, `/auth` | Model and authentication configuration                                        |
+| `/export`                                                            | Export character facts and audit history to a private JSON file               |
+| `/backup`                                                            | Consistent local backup of all character memory and sessions                  |
 
 While the agent is working, read-only inspection is available, but new messages,
 manual edits, sync, and character/session changes require cancellation first. No

@@ -15,6 +15,7 @@
     "test:watch": "vp test watch"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
     "@loadstone/agent": "workspace:*",
     "@loadstone/memory": "workspace:*",
     "ink": "^7.1.1",

@@ -13,7 +13,8 @@ import {
 import {
   openCompanion,
   syncCharacter,
-  createCompanionModels,
+  createCompanionConnection,
+  type CompanionConnection,
   type Companion,
   type AgentView,
   type ModelRef,
@@ -28,7 +29,7 @@ export const HELP = `Chat normally to ask for advice or report progress. Clear f
 /forget KIND KEY — propose deletion; /approve ID or /reject ID after reviewing
 /undo ID — undo a saved operation if no newer change affects its facts
 /new • /sessions • /resume SESSION_ID • /earlier • /retry
-/model PROVIDER MODEL_ID • /models [filter]
+/model PROVIDER MODEL_ID • /model pi • /models [filter] • /auth
 /export — character JSON including history; /backup — all memory and sessions
 /quit — save and quit (unfinished agent work resumes on reopen)
 Esc — cancel agent/sync • PageUp/PageDown — scroll • Tab — chat/memory
@@ -57,12 +58,19 @@ export class Controller {
     facts: [],
     view: emptyView(),
     notice:
-      "Welcome to Loadstone. Type /character YourRSN to begin, or /help.\nLocal memory stays on this machine. Chat and retrieved context are sent to your configured model provider.\nDo not paste API keys in chat. Automatic saves are visible in /history and reversible with /undo.",
+      "Welcome to Loadstone. Type /character YourRSN to begin, or /help.\nLocal memory stays on this machine. Chat and retrieved context are sent to your configured model provider.\nExisting pi login is reused automatically; /auth shows credential status. Do not paste credentials in chat. Automatic saves are visible in /history and reversible with /undo.",
     processing: false,
     pending: 0,
   };
   private listeners = new Set<() => void>();
   private companion?: Companion;
+  private connection?: Promise<CompanionConnection>;
+  private getConnection() {
+    return (this.connection ??= createCompanionConnection().catch((error) => {
+      this.connection = undefined;
+      throw error;
+    }));
+  }
   private syncAbort?: AbortController;
   private closed = false;
   private closing?: Promise<void>;
@@ -96,10 +104,12 @@ export class Controller {
   report(error: unknown) {
     this.update({ notice: error instanceof Error ? error.message : String(error) });
   }
-  private defaultModel(): ModelRef {
+  private async defaultModel(): Promise<ModelRef> {
+    const fallback = (await this.getConnection()).defaultModel;
     return {
-      provider: process.env.LOADSTONE_PROVIDER ?? this.memory.setting("provider") ?? "openai",
-      modelId: process.env.LOADSTONE_MODEL ?? this.memory.setting("model") ?? "gpt-4o-mini",
+      provider:
+        process.env.LOADSTONE_PROVIDER ?? this.memory.setting("provider") ?? fallback.provider,
+      modelId: process.env.LOADSTONE_MODEL ?? this.memory.setting("model") ?? fallback.modelId,
     };
   }
   initialize(): Promise<void> {
@@ -136,7 +146,8 @@ export class Controller {
       memory: this.memory,
       characterId: character.id,
       sessionId: session.id,
-      model: this.defaultModel(),
+      model: await this.defaultModel(),
+      models: (await this.getConnection()).models,
       onChange: (view) => {
         if (epoch === this.epoch && !this.closed) {
           this.update({ view });
@@ -178,10 +189,14 @@ export class Controller {
     const split = input.indexOf(" ");
     const command = split < 0 ? input : input.slice(0, split);
     const args = split < 0 ? "" : input.slice(split + 1).trim();
+    if (command === "/auth") {
+      this.update({ notice: (await this.getConnection()).authSummary });
+      return;
+    }
     if (command === "/models") {
       this.update({
         notice:
-          createCompanionModels()
+          (await this.getConnection()).models
             .getModels()
             .filter((m) => `${m.provider} ${m.id}`.toLowerCase().includes(args.toLowerCase()))
             .map((m) => `${m.provider} ${m.id}`)
@@ -282,15 +297,18 @@ export class Controller {
       return;
     }
     if (command === "/model") {
-      const [provider, modelId, extra] = args.split(/\s+/);
+      const selected = args === "pi" ? (await this.getConnection()).defaultModel : undefined;
+      const [provider, modelId, extra] = selected
+        ? [selected.provider, selected.modelId]
+        : args.split(/\s+/);
       if (!provider || !modelId || extra)
-        throw new Error("Usage: /model PROVIDER MODEL_ID. Use /models to list.");
+        throw new Error("Usage: /model PROVIDER MODEL_ID or /model pi. Use /models to list.");
       if (!this.companion) throw new Error("Session unavailable. Use /resume SESSION_ID.");
       await this.companion.setModel({ provider, modelId });
       this.memory.setSetting("provider", provider);
       this.memory.setSetting("model", modelId);
       this.update({
-        notice: `Model: ${provider}/${modelId}. Credentials are read from the provider's environment variable.`,
+        notice: `Model: ${provider}/${modelId}. Use /auth for credential status.`,
       });
       return;
     }

@@ -9,7 +9,7 @@ import { Controller, HELP } from "./controller";
 async function main() {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     console.log(
-      `Loadstone Ironman companion\n\npnpm run tui\n\nConfiguration:\nLOADSTONE_HOME (default ~/.loadstone)\nLOADSTONE_PROVIDER (default openai)\nLOADSTONE_MODEL (default gpt-4o-mini)\nOPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY\n\n${HELP}`,
+      `Loadstone Ironman companion\n\npnpm run tui\n\nConfiguration:\nLOADSTONE_HOME (default ~/.loadstone)\nExisting pi login is reused, including ChatGPT OAuth.\nLOADSTONE_AUTH (pi, or env to bypass pi credentials)\nPI_CODING_AGENT_DIR (default ~/.pi/agent)\nLOADSTONE_PI_AUTH_PATH (optional auth.json override)\nLOADSTONE_PROVIDER / LOADSTONE_MODEL (override new-session defaults)\nOPENAI_API_KEY / ANTHROPIC_API_KEY / OPENROUTER_API_KEY (environment alternative)\n/auth shows status; /model pi selects pi's default model\n\n${HELP}`,
     );
     return;
   }
