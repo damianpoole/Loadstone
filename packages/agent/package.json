@@ -1,0 +1,24 @@
+{
+  "name": "@loadstone/agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vp test run",
+    "test:watch": "vp test watch"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@loadstone/memory": "workspace:*",
+    "@loadstone/wiki-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@loadstone/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "vite-plus": "catalog:"
+  }
+}

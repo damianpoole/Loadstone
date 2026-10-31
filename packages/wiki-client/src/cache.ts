@@ -36,9 +36,7 @@ const parsePositiveNumber = (value?: string): number | undefined => {
 
 const resolveCacheOptions = (options?: CacheOptions): ResolvedCacheOptions => {
   const envTtlMs = parsePositiveNumber(process.env.LOADSTONE_CACHE_TTL_MS);
-  const envTtlHours = parsePositiveNumber(
-    process.env.LOADSTONE_CACHE_TTL_HOURS,
-  );
+  const envTtlHours = parsePositiveNumber(process.env.LOADSTONE_CACHE_TTL_HOURS);
   const envDir = process.env.LOADSTONE_CACHE_DIR;
 
   const ttlMs =
@@ -47,8 +45,7 @@ const resolveCacheOptions = (options?: CacheOptions): ResolvedCacheOptions => {
     (envTtlHours ? envTtlHours * 60 * 60 * 1000 : undefined) ??
     DEFAULT_TTL_MS;
 
-  const dir =
-    options?.dir ?? envDir ?? path.join(os.homedir(), ".loadstone", "cache");
+  const dir = options?.dir ?? envDir ?? path.join(os.homedir(), ".loadstone", "cache");
   const enabled = options?.enabled ?? true;
 
   return {
@@ -58,11 +55,7 @@ const resolveCacheOptions = (options?: CacheOptions): ResolvedCacheOptions => {
   };
 };
 
-const buildCacheKey = (
-  url: string,
-  fetchOptions?: RequestInit,
-  cacheKey?: string,
-): string => {
+const buildCacheKey = (url: string, fetchOptions?: RequestInit, cacheKey?: string): string => {
   if (cacheKey) return cacheKey;
 
   const method = fetchOptions?.method?.toUpperCase() ?? "GET";
@@ -99,10 +92,7 @@ const ensureCacheDir = async (dir: string): Promise<void> => {
   await fs.mkdir(dir, { recursive: true });
 };
 
-const readCacheEntry = async <T>(
-  filePath: string,
-  ttlMs: number,
-): Promise<T | null> => {
+const readCacheEntry = async <T>(filePath: string, ttlMs: number): Promise<T | null> => {
   try {
     const raw = await fs.readFile(filePath, "utf8");
     const entry = JSON.parse(raw) as CacheEntry<T>;
@@ -138,9 +128,16 @@ export const fetchJsonWithCache = async <T>(
   options: FetchJsonWithCacheOptions = {},
 ): Promise<T> => {
   const resolvedCache = resolveCacheOptions(options.cache);
+  const timeout = AbortSignal.timeout(20_000);
+  const fetchOptions: RequestInit = {
+    ...options.fetchOptions,
+    signal: options.fetchOptions?.signal
+      ? AbortSignal.any([options.fetchOptions.signal, timeout])
+      : timeout,
+  };
 
   if (!resolvedCache.enabled) {
-    const response = await fetch(url, options.fetchOptions);
+    const response = await fetch(url, fetchOptions);
     if (!response.ok) {
       throw new Error(`Request failed: ${response.statusText}`);
     }
@@ -152,9 +149,7 @@ export const fetchJsonWithCache = async <T>(
     await ensureCacheDir(resolvedCache.dir);
   } catch (error) {
     cacheReady = false;
-    console.warn(
-      `Cache directory unavailable (${resolvedCache.dir}): ${formatError(error)}`,
-    );
+    console.warn(`Cache directory unavailable (${resolvedCache.dir}): ${formatError(error)}`);
   }
 
   const cacheKey = buildCacheKey(url, options.fetchOptions, options.cacheKey);
@@ -167,7 +162,7 @@ export const fetchJsonWithCache = async <T>(
     }
   }
 
-  const response = await fetch(url, options.fetchOptions);
+  const response = await fetch(url, fetchOptions);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.statusText}`);
   }

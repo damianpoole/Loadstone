@@ -3,6 +3,8 @@ import { fetchJsonWithCache } from "./cache";
 import type { CacheOptions } from "./cache";
 
 export type { CacheOptions } from "./cache";
+export { getRSProfileSnapshot } from "./profile-snapshot";
+export type { RSProfileSnapshot, ProfilePart } from "./profile-snapshot";
 
 export interface SearchResult {
   title: string;
@@ -19,7 +21,7 @@ const BASE_URL = "https://runescape.wiki/api.php";
  */
 export async function searchWiki(
   query: string,
-  options: { cache?: CacheOptions } = {},
+  options: { cache?: CacheOptions; signal?: AbortSignal } = {},
 ): Promise<SearchResult[]> {
   const url = new URL(BASE_URL);
   url.searchParams.append("action", "query");
@@ -32,6 +34,7 @@ export async function searchWiki(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await fetchJsonWithCache<any>(url.toString(), {
       cache: options.cache,
+      fetchOptions: { signal: options.signal },
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +61,7 @@ export async function searchWiki(
  */
 export async function getPage(
   title: string,
-  options: { json?: boolean; section?: string; cache?: CacheOptions } = {},
+  options: { json?: boolean; section?: string; cache?: CacheOptions; signal?: AbortSignal } = {},
 ): Promise<string | object | null> {
   const url = new URL(BASE_URL);
   url.searchParams.append("action", "parse");
@@ -71,6 +74,7 @@ export async function getPage(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await fetchJsonWithCache<any>(url.toString(), {
       cache: options.cache,
+      fetchOptions: { signal: options.signal },
     });
 
     if (data.error) {
@@ -206,10 +210,7 @@ export function parseWikiContent(html: string): Record<string, string> {
       if (headingNode.is("h2")) {
         const headingText = normalizeHeaderText(headingNode.text());
         const headingId = headingNode.attr("id");
-        if (
-          headingId === "mw-toc-heading" ||
-          headingText.toLowerCase() === "contents"
-        ) {
+        if (headingId === "mw-toc-heading" || headingText.toLowerCase() === "contents") {
           return;
         }
 
@@ -254,7 +255,7 @@ export function parseWikiContent(html: string): Record<string, string> {
  */
 export async function getCategoryMembers(
   category: string,
-  options: { limit?: number; cache?: CacheOptions } = {},
+  options: { limit?: number; cache?: CacheOptions; signal?: AbortSignal } = {},
 ): Promise<string[]> {
   const url = new URL(BASE_URL);
 
@@ -271,6 +272,7 @@ export async function getCategoryMembers(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await fetchJsonWithCache<any>(url.toString(), {
       cache: options.cache,
+      fetchOptions: { signal: options.signal },
     });
 
     const members = data.query?.categorymembers || [];

@@ -1,6 +1,6 @@
 # Loadstone
 
-A powerful CLI tool for accessing the [RuneScape 3 Wiki](https://runescape.wiki/), designed to assist Ironman players and power LLM agents with structured game data.
+CLI tools and a persistent Ironman chat companion for the [RuneScape 3 Wiki](https://runescape.wiki/) and RuneMetrics, designed to assist Ironman players and power LLM agents with structured game data.
 
 Built with **Node.js**, **pnpm**, **Vite Plus**, and **TypeScript**, with tools pinned by **mise**.
 
@@ -14,6 +14,7 @@ Built with **Node.js**, **pnpm**, **Vite Plus**, and **TypeScript**, with tools 
 - **JSON Output**: All commands support `--json` for easy integration with LLMs.
 - **Caching**: File-system cache with TTL and optional custom directory.
 - **Token Reduction**: Headings-only output and JSON field selection for smaller payloads.
+- **Ironman TUI**: Ink chat with a pi-durable agent, wiki tools, resumable sessions, and local SQLite character memory. Automatic saves have provenance, conflict review, and undo.
 
 ## Installation
 
@@ -66,6 +67,23 @@ Provide your RuneScape character name explicitly when first querying your profil
 Use `--no-cache` for fresh progress checks. Normal skill output contains levels;
 quest API failure may produce an empty list, so an empty list alone does not prove
 that no quests are complete.
+
+## Ironman companion (source builds)
+
+```bash
+# After installing workspace dependencies; requires an interactive terminal
+# Set OPENAI_API_KEY securely in your environment (or configure Anthropic/OpenRouter).
+pnpm run tui
+```
+
+Start with `/character YourRSN`, then `/sync`. Chat about goals and progress; the
+agent can save skills, quests, relevant items, unlocks, goals and preferences.
+Use `/memory`, `/history`, `/pending` and `/undo ID` to inspect and correct saves.
+Memory editing and RuneMetrics sync also work without a model key.
+
+See [the TUI guide](docs/ironman-tui.md) for provider configuration, keyboard controls,
+backup/restore, privacy, recovery guarantees and architecture. The TUI is currently
+run from this monorepo, not included in the published `loadstone-rs3` CLI package.
 
 ## Usage
 
@@ -122,7 +140,10 @@ loadstone page "Abyssal whip" --no-cache
 
 ## Project Structure
 
-- `apps/cli`: The main command-line application.
+- `apps/cli`: The existing command-line application.
+- `apps/tui`: Ink Ironman companion UI and commands.
+- `packages/agent`: pi-durable runtime and scoped wiki/memory tools.
+- `packages/memory`: SQLite character memory, history, review and undo.
 - `packages/wiki-client`: Shared library for RS3 Wiki and RuneMetrics API interaction.
 - `packages/tsconfig`: Shared TypeScript configuration.
 

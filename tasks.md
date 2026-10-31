@@ -2,6 +2,16 @@
 
 Features and improvements planned to enhance the CLI for use with Ironman progress LLM agents.
 
+## Ironman Companion TUI
+
+- [x] **Ink app**: Chat, streaming/tool status, responsive sidebar, scrollable chat/memory views, character onboarding and session resume.
+- [x] **Durable agent**: Pinned pi-durable integration, scoped wiki/memory tools, cancellation, model selection, replay-safe writes and bounded tool rounds.
+- [x] **Character memory**: SQLite skills, quests, items, unlocks, goals, preferences and notes with provenance, atomic history, conflict review and undo.
+- [x] **Safe RuneMetrics sync**: Fresh, independently validated skill/quest snapshots; unavailable data never erases progress.
+- [x] **Local data controls**: Exclusive process lock, character export, full memory/session backup and documented restore/deletion.
+- [x] **Companion tests/docs**: Temporary SQLite, faux-model agent and interruption tests, Ink/command tests, provider and privacy guide.
+- [ ] **Future companion improvements**: OAuth onboarding, optional save-everything confirmation mode, JSON import, and deterministic quest dependency planning.
+
 ## New Commands
 
 - [x] **`category` command**: Implement `action=query&list=categorymembers` to allow the agent to discover sets of related pages (e.g., "Category:Novice quests", "Category:Tier 70 weapons").
