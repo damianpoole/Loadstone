@@ -5,6 +5,7 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 ## Ironman Companion TUI
 
 - [x] **Ink app**: Chat, streaming/tool status, responsive sidebar, scrollable chat/memory views, character onboarding and session resume.
+- [x] **Sidebar clarity**: Selected character name, explicit last-saved-facts labeling, and sync/user provenance rather than implying recent in-game activity.
 - [x] **Conversation scrollback**: Mouse wheel/trackpad, arrow/page keys, Home/End, and a stable reading position during streamed responses; navigation never changes the draft.
 - [x] **Durable agent**: Pinned pi-durable integration, scoped wiki/memory tools, cancellation, model selection, replay-safe writes and bounded tool rounds.
 - [x] **Character memory**: SQLite skills, quests, items, unlocks, goals, preferences and notes with provenance, atomic history, conflict review and undo.

@@ -27,6 +27,63 @@ export function screenLines(state: AppState, tab: "chat" | "memory", width: numb
         ].join("\n");
   return wrapAnsi(plainText(content), Math.max(10, width), { hard: true, trim: false }).split("\n");
 }
+export function CharacterSidebar({ state }: { state: AppState }) {
+  const recent = [...state.facts].sort((a, b) => b.recordedAt - a.recordedAt).slice(0, 3);
+  return (
+    <Box
+      width={32}
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="gray"
+      paddingX={1}
+      overflow="hidden"
+    >
+      <Text bold color="green">
+        CHARACTER
+      </Text>
+      <Text bold wrap="truncate-end">
+        {plainText(state.character?.name ?? "No character selected")}
+      </Text>
+      <Text>{plainText(state.character?.mode ?? "Ironman companion")}</Text>
+      <Text>
+        {state.facts.filter((f) => f.kind === "quest" && f.value === "COMPLETED").length} quests
+        known complete
+      </Text>
+      <Text bold color="yellow">
+        GOALS
+      </Text>
+      <Text>
+        {plainText(
+          state.facts
+            .filter((f) => f.kind === "goal" && f.value === "active")
+            .slice(0, 3)
+            .map((f) => `• ${f.key}`)
+            .join("\n") || "No active goals",
+        )}
+      </Text>
+      <Text bold color="yellow">
+        LAST SAVED FACTS
+      </Text>
+      <Text dimColor>Includes sync, not activity</Text>
+      {recent.length ? (
+        recent.map((f) => (
+          <Box key={`${f.kind}:${f.key}`} flexDirection="column">
+            <Text>
+              {plainText(
+                `${f.key}: ${typeof f.value === "string" ? (f.kind === "quest" ? f.value.replaceAll("_", " ") : f.value) : JSON.stringify(f.value)}`,
+              )}
+            </Text>
+            <Text dimColor>
+              {f.source === "runemetrics" ? "RuneMetrics sync" : "User reported"}
+            </Text>
+          </Box>
+        ))
+      ) : (
+        <Text>No saved facts yet</Text>
+      )}
+    </Box>
+  );
+}
 export function App({ controller, onQuit }: { controller: Controller; onQuit: () => void }) {
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
   const [input, setInput] = useState("");
@@ -119,49 +176,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
         >
           <Text>{lines.slice(start, start + bodyHeight).join("\n")}</Text>
         </Box>
-        {sidebar && (
-          <Box
-            width={32}
-            flexDirection="column"
-            borderStyle="single"
-            borderColor="gray"
-            paddingX={1}
-            overflow="hidden"
-          >
-            <Text bold color="green">
-              CHARACTER
-            </Text>
-            <Text>{plainText(state.character?.mode ?? "Ironman companion")}</Text>
-            <Text>
-              {state.facts.filter((f) => f.kind === "quest" && f.value === "COMPLETED").length}{" "}
-              quests known complete
-            </Text>
-            <Text bold color="yellow">
-              GOALS
-            </Text>
-            <Text>
-              {plainText(
-                state.facts
-                  .filter((f) => f.kind === "goal" && f.value === "active")
-                  .slice(0, 3)
-                  .map((f) => `• ${f.key}`)
-                  .join("\n") || "No active goals",
-              )}
-            </Text>
-            <Text bold color="yellow">
-              RECENT MEMORY
-            </Text>
-            <Text>
-              {plainText(
-                [...state.facts]
-                  .sort((a, b) => b.recordedAt - a.recordedAt)
-                  .slice(0, 3)
-                  .map((f) => `${f.key}: ${JSON.stringify(f.value)}`)
-                  .join("\n"),
-              )}
-            </Text>
-          </Box>
-        )}
+        {sidebar && <CharacterSidebar state={state} />}
       </Box>
       <Text color="yellow" wrap="truncate-end">
         {plainText(

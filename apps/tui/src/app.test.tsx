@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { render, cleanup } from "ink-testing-library";
-import { App, plainText, screenLines } from "./app";
+import { App, CharacterSidebar, plainText, screenLines } from "./app";
 import type { AppState, Controller } from "./controller";
 
 afterEach(cleanup);
@@ -35,6 +35,80 @@ it("wraps chat for small terminals and labels item memory as last observed", () 
     },
   ];
   expect(screenLines({ ...state, facts }, "memory", 100).join("\n")).toContain("last observed");
+});
+describe("character sidebar", () => {
+  it("shows the selected name and distinguishes synced statuses from reported progress", () => {
+    const facts: AppState["facts"] = [
+      {
+        kind: "quest",
+        key: "tai bwo wannai trio",
+        value: "NOT_STARTED",
+        source: "runemetrics",
+        observedAt: 1,
+        recordedAt: 3,
+        evidence: "sync",
+        operationId: "sync",
+      },
+      {
+        kind: "skill",
+        key: "herblore",
+        value: 90,
+        source: "user",
+        observedAt: 1,
+        recordedAt: 2,
+        evidence: "reported",
+        operationId: "report",
+      },
+      {
+        kind: "quest",
+        key: "druidic ritual",
+        value: "COMPLETED",
+        source: "runemetrics",
+        observedAt: 1,
+        recordedAt: 1,
+        evidence: "sync",
+        operationId: "sync",
+      },
+    ];
+    const ui = render(
+      <CharacterSidebar
+        state={{
+          ...state,
+          character: { id: "iron", name: "My Iron", mode: "ironman", createdAt: 0 },
+          facts,
+        }}
+      />,
+    );
+    const frame = ui.lastFrame()!;
+    expect(frame).toContain("CHARACTER");
+    expect(frame).toContain("My Iron");
+    expect(frame).toContain("ironman");
+    expect(frame).toContain("1 quests known complete");
+    expect(frame).toContain("LAST SAVED FACTS");
+    expect(frame).toContain("Includes sync, not activity");
+    expect(frame).toContain("tai bwo wannai trio:");
+    expect(frame.replace(/[│\s]+/g, " ")).toContain("NOT STARTED");
+    expect(frame).toContain("RuneMetrics sync");
+    expect(frame).toContain("User reported");
+    expect(frame.indexOf("tai bwo wannai trio")).toBeLessThan(frame.indexOf("herblore"));
+    expect(frame).not.toContain("RECENT MEMORY");
+    expect(facts[0].value).toBe("NOT_STARTED");
+  });
+  it("has explicit empty states and strips controls from character names", async () => {
+    const ui = render(<CharacterSidebar state={state} />);
+    expect(ui.lastFrame()).toContain("No character selected");
+    expect(ui.lastFrame()).toContain("No saved facts yet");
+    ui.rerender(
+      <CharacterSidebar
+        state={{
+          ...state,
+          character: { id: "iron", name: "\x1b[31mMy Iron\x1b[0m", mode: "ironman", createdAt: 0 },
+        }}
+      />,
+    );
+    await vi.waitFor(() => expect(ui.lastFrame()).toContain("My Iron"));
+    expect(ui.lastFrame()).not.toContain("\x1b[31m");
+  });
 });
 describe("Ink screen", () => {
   it("scrolls long responses with arrows, pages, Home/End and the mouse without editing the draft", async () => {

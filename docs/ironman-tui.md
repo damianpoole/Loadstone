@@ -102,8 +102,13 @@ memory repository validates the values. Goals and hypothetical progress are not
 achieved unlocks. This distinction is a model instruction, not a deterministic
 natural-language classifier: review important facts and correct mistakes.
 
-You see saved memory operations in the transcript, recent facts in the sidebar,
-and pending conflicts in the header. `/history` includes full receipts and evidence.
+You see saved memory operations in the transcript, the character name and **Last
+saved facts** in the sidebar, and pending conflicts in the header. The sidebar
+lists up to three facts by local save time, with their source (RuneMetrics sync or
+user report). It is **not a recent in-game activity feed**: `NOT STARTED` is a
+stored quest status, not a new action. A bulk sync may save many statuses at once,
+so equally recent entries do not indicate an order of in-game events. Use
+`/memory` for all facts and observation times. `/history` includes full receipts and evidence.
 The UI shows “saved” only after the SQLite transaction commits.
 
 ## Controls and commands
