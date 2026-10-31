@@ -39,3 +39,9 @@ ts-debug.log*
 .idea
 
 .vitest/
+
+# Local companion data (when LOADSTONE_HOME is inside the checkout)
+.loadstone/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

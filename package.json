@@ -5,6 +5,8 @@
     "build": "vp run -r build",
     "dev": "pnpm --filter loadstone-rs3 dev",
     "start": "pnpm --filter loadstone-rs3 start",
+    "tui": "pnpm --filter loadstone-tui start",
+    "dev:tui": "pnpm --filter loadstone-tui dev",
     "lint": "vp lint",
     "check-types": "pnpm -r check-types",
     "test": "vp run -r test",

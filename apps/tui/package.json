@@ -1,0 +1,38 @@
+{
+  "name": "loadstone-tui",
+  "version": "0.0.1",
+  "private": true,
+  "bin": {
+    "loadstone-tui": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "vp pack",
+    "start": "vp pack && node dist/index.js",
+    "dev": "vp pack --watch",
+    "check-types": "tsc --noEmit",
+    "test": "vp test run",
+    "test:watch": "vp test watch"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@loadstone/agent": "workspace:*",
+    "@loadstone/memory": "workspace:*",
+    "ink": "^7.1.1",
+    "proper-lockfile": "^4.1.2",
+    "react": "^19.2.0",
+    "strip-ansi": "^7.1.0",
+    "wrap-ansi": "^9.0.0"
+  },
+  "devDependencies": {
+    "@loadstone/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/react": "^19.2.0",
+    "ink-testing-library": "^4.0.0",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": "^24.19.0 || >=26.0.0"
+  }
+}

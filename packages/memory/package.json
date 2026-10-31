@@ -1,0 +1,17 @@
+{
+  "name": "@loadstone/memory",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vp test run",
+    "test:watch": "vp test watch"
+  },
+  "devDependencies": {
+    "@loadstone/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "vite-plus": "catalog:"
+  }
+}
