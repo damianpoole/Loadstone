@@ -50,14 +50,20 @@ export function entryMessages(entry: EntryRecord): ChatMessage[] {
       if (message.isError) detail = `failed — ${text.slice(0, 500)}`;
       else if (text.startsWith("Tool-round limit reached")) detail = text;
       else if (message.toolName === "sync_runemetrics") detail = text;
-      else if (message.toolName === "update_character_memory") {
+      else if (
+        message.toolName === "update_character_memory" ||
+        message.toolName === "save_character_plan"
+      ) {
         try {
           const receipt = JSON.parse(text) as {
             status: string;
             id: string;
             changes: { key: string; after: { value: unknown } | null }[];
           };
-          detail = `${receipt.status === "saved" ? "Saved" : "Not saved — review required"}: ${receipt.changes.map((c) => `${c.key} → ${JSON.stringify(c.after?.value ?? null)}`).join(", ")}\nOperation: ${receipt.id} (/history, /undo ID, /pending)`;
+          detail =
+            message.toolName === "save_character_plan"
+              ? `${receipt.status === "saved" ? "Saved plan and goals" : "Not saved — review required"}. Inspect /goals for steps.\nOperation: ${receipt.id} (/history, /undo ID, /pending)`
+              : `${receipt.status === "saved" ? "Saved" : "Not saved — review required"}: ${receipt.changes.map((c) => `${c.key} → ${JSON.stringify(c.after?.value ?? null)}`).join(", ")}\nOperation: ${receipt.id} (/history, /undo ID, /pending)`;
         } catch {
           detail = text.slice(0, 1000);
         }

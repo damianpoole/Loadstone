@@ -7,6 +7,7 @@ import stringWidth from "string-width";
 import { plainText, renderMarkdown, terminalStyle } from "./markdown";
 export { plainText } from "./markdown";
 import type { Controller, AppState } from "./controller";
+import { parsePlan, planGoalKey } from "@loadstone/memory";
 
 export function screenLines(state: AppState, tab: "chat" | "memory", width: number): string[] {
   const content =
@@ -14,7 +15,7 @@ export function screenLines(state: AppState, tab: "chat" | "memory", width: numb
       ? state.facts
           .map(
             (f) =>
-              `${f.kind} / ${f.key}: ${JSON.stringify(f.value)}\n  ${f.source} • ${new Date(f.observedAt).toLocaleDateString()} (last observed)`,
+              `${f.kind} / ${f.key}: ${f.kind === "plan" ? "Generated prerequisite plan — use /goals for ordered steps" : JSON.stringify(f.value)}\n  ${f.kind === "plan" ? "Generated advice" : f.source} • ${new Date(f.observedAt).toLocaleDateString()} (last observed)`,
           )
           .join("\n") ||
         "No memory yet. /sync imports progress, or tell the agent about your character."
@@ -48,6 +49,14 @@ export function screenLines(state: AppState, tab: "chat" | "memory", width: numb
 }
 export function CharacterSidebar({ state }: { state: AppState }) {
   const recent = [...state.facts].sort((a, b) => b.recordedAt - a.recordedAt).slice(0, 3);
+  const subgoalKeys = new Set(
+    state.facts
+      .filter((f) => f.kind === "plan")
+      .flatMap((f) => {
+        const plan = parsePlan(f.value);
+        return plan.steps.map((s) => planGoalKey(plan.target, s.id));
+      }),
+  );
   return (
     <Box
       width={32}
@@ -74,7 +83,7 @@ export function CharacterSidebar({ state }: { state: AppState }) {
       <Text>
         {plainText(
           state.facts
-            .filter((f) => f.kind === "goal" && f.value === "active")
+            .filter((f) => f.kind === "goal" && f.value === "active" && !subgoalKeys.has(f.key))
             .slice(0, 3)
             .map((f) => `• ${f.key}`)
             .join("\n") || "No active goals",
@@ -89,11 +98,15 @@ export function CharacterSidebar({ state }: { state: AppState }) {
           <Box key={`${f.kind}:${f.key}`} flexDirection="column">
             <Text>
               {plainText(
-                `${f.key}: ${typeof f.value === "string" ? (f.kind === "quest" ? f.value.replaceAll("_", " ") : f.value) : JSON.stringify(f.value)}`,
+                `${f.key}: ${f.kind === "plan" ? "Plan saved — /goals" : typeof f.value === "string" ? (f.kind === "quest" ? f.value.replaceAll("_", " ") : f.value) : JSON.stringify(f.value)}`,
               )}
             </Text>
             <Text dimColor>
-              {f.source === "runemetrics" ? "RuneMetrics sync" : "User reported"}
+              {f.kind === "plan"
+                ? "Generated advice"
+                : f.source === "runemetrics"
+                  ? "RuneMetrics sync"
+                  : "User reported"}
             </Text>
           </Box>
         ))

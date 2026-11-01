@@ -169,7 +169,8 @@ colour leaking into the rest of the interface.
 | `/create MODE RSN`                                                   | Create an Ironman, hardcore, or group-ironman                                 |
 | `/sync`                                                              | Fresh skills and quests from RuneMetrics                                      |
 | `/memory [query]`                                                    | Search facts with provenance                                                  |
-| `/goals [query]`                                                     | Browse goals                                                                  |
+| `/goals [query]`                                                     | Browse goals and nested plan steps with current readiness                     |
+| `/plan TARGET`                                                       | Research any RS3 outcome and save a prerequisite plan as ordered nested goals |
 | `/history`                                                           | Last 30 operations, including previous values                                 |
 | `/pending`                                                           | Inspect proposed changes and conflicts                                        |
 | `/approve ID`, `/reject ID`                                          | Resolve a pending proposal explicitly                                         |
@@ -188,6 +189,71 @@ colour leaking into the rest of the interface.
 While the agent is working, read-only inspection is available, but new messages,
 manual edits, sync, and character/session changes require cancellation first. No
 hidden queue of messages can unexpectedly modify another character.
+
+### Outcome planning
+
+`/plan` accepts an outcome, not only a quest name. For example:
+
+```text
+/plan Prifddinas
+/plan unlock Invention
+/plan obtain an abyssal whip
+/plan prepare for normal-mode Arch-Glacor
+/goals
+/goals Prifddinas
+```
+
+The agent researches RS3 Wiki pages, compares prerequisites with the active
+character's saved facts, and saves a root goal plus nested, ordered subgoals in
+one atomic operation. Each step includes wiki sources, practical notes, dependency
+IDs, and structured requirements where available. Parents group subgoals; explicit
+`dependsOn` links describe prerequisite order. The wide sidebar shows root goals
+rather than filling up with their subgoals. `/goals` shows the full tree.
+
+All generated goals begin **active**, not completed. Readiness is recalculated
+from current memory whenever goals are read:
+
+- **satisfied:** the recorded requirements and child goals are satisfied; this is
+  a computed hint, not a newly saved quest/unlock or goal completion.
+- **ready:** dependencies are satisfied and the step can be worked on.
+- **blocked:** prerequisite steps are not yet satisfied.
+- **needs confirmation:** relevant progress is unknown, including unknown item quantities.
+- **subgoals:** work through the nested steps first.
+- **paused / completed:** explicitly saved goal statuses.
+
+The root's status remains under your control; it is not automatically completed.
+A step with no structured requirements is a manual checklist item. `/goals`
+prints each step's goal key; use it to change its status, for example:
+
+```text
+/set goal prifddinas / enter = "completed"
+/set goal Prifddinas = "paused"
+```
+
+Replace `enter` with the actual ID printed for your plan. Pausing a root does not
+rewrite its subgoals. Record actual in-game progress in chat, with `/set`, or
+`/sync`; do not mark a goal complete as a substitute for recording a quest fact.
+
+Plans are **model-generated advice**, not a deterministic, exhaustive quest
+solver. Requirement selection and source fidelity depend on the model. The
+repository validates the structure, ordering, acyclic dependencies (including
+parent/child edges), skill names/levels, and wiki URL shapes, but does not prove
+that a cited page contains a claim. Review sources and unknowns before a long
+grind. Ambiguous requests may need a more specific `/plan` command; unavailable
+research should not be represented as a verified plan. Plans are bounded to 60
+steps; large outcomes may need scoped follow-up plans with unresolved work
+explicitly noted.
+
+The saved plan metadata is a `plan` fact containing JSON; goal statuses remain
+ordinary `goal` facts, preserving existing commands. Generated metadata is labeled
+as advice, and its evidence records the planning request rather than claiming
+the user reported those prerequisites. Creation is visible in `/history`, included
+in exports/backups, and replay-safe after interruption. `/undo OPERATION_ID`
+reverses the entire creation, provided no affected facts changed afterward.
+An existing target cannot be silently replaced: inspect `/goals`, undo later goal
+edits and then the original creation if needed, or use a distinct target for an
+alternative plan. Deleting only the metadata leaves its goals as standalone goals;
+undo the creation to remove the complete plan together.
 
 ### Manual facts
 
@@ -347,5 +413,5 @@ wiki-backed advice, report a level/quest/item, inspect `/history`, undo a save, 
 restart. Natural-language memory decisions are model-dependent; the scripted tests
 verify the integration and policy, not every model's adherence to that policy.
 
-Not included: OAuth onboarding, cloud sync, a complete quest dependency planner,
+Not included: OAuth onboarding, cloud sync, a deterministic complete quest dependency solver,
 live bank access, embeddings/vector storage, or in-game automation.

@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, mkdir, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Controller } from "./controller";
+import { savePlan } from "@loadstone/memory";
 import { syncCharacter, type Companion, type AgentView } from "@loadstone/agent";
 
 vi.mock("@loadstone/agent", async (importOriginal) => ({
@@ -54,6 +55,58 @@ describe("TUI commands", () => {
     controller = new Controller(home, open);
     await controller.initialize();
     expect(controller.state.character?.name).toBe("OtherIron");
+  });
+  it("sends broad planning requests verbatim, validates targets, and respects the busy guard", async () => {
+    await controller.execute("/plan Prifddinas");
+    expect(controller.state.notice).toContain("Select a character");
+    expect(agent.send).not.toHaveBeenCalled();
+    await controller.execute("/character MyIron");
+    await controller.execute("/plan");
+    expect(controller.state.notice).toContain("Usage: /plan");
+    await controller.execute(`/plan ${"x".repeat(101)}`);
+    expect(agent.send).not.toHaveBeenCalled();
+    await controller.execute("/plan Prifddinas");
+    expect(agent.send).toHaveBeenLastCalledWith("/plan Prifddinas");
+    await controller.execute("/plan obtain an abyssal whip");
+    expect(agent.send).toHaveBeenLastCalledWith("/plan obtain an abyssal whip");
+    controller.state = { ...controller.state, view: { ...controller.state.view, busy: true } };
+    await controller.execute("/plan Invention");
+    expect(agent.send).toHaveBeenCalledTimes(2);
+    expect(controller.state.notice).toContain("agent is working");
+  });
+  it("browses nested plan goals, filters them, and marks manual steps completed with existing commands", async () => {
+    await controller.execute("/character MyIron");
+    savePlan(
+      controller.memory,
+      {
+        characterId: controller.state.character!.id,
+        operationId: "plan",
+        source: "user",
+        observedAt: Date.now(),
+        evidence: "/plan Prifddinas",
+      },
+      {
+        target: "Prifddinas",
+        steps: [
+          {
+            id: "enter",
+            title: "Enter the city",
+            dependsOn: [],
+            requirements: [],
+            sources: ["https://runescape.wiki/w/Prifddinas"],
+            notes: "Manual fixture.",
+          },
+        ],
+      },
+    );
+    await controller.execute("/goals");
+    expect(controller.state.notice).toContain("  enter. Enter the city [ready]");
+    expect(controller.state.notice).toContain("Goal: prifddinas / enter");
+    await controller.execute('/set goal prifddinas / enter = "completed"');
+    await controller.execute("/goals Prifddinas");
+    expect(controller.state.notice).toContain("Enter the city [completed]");
+    await controller.execute("/goals unrelated");
+    expect(controller.state.notice).toBe("No saved goals match.");
   });
   it("uses pi's model for new sessions and respects explicit overrides", async () => {
     vi.stubEnv("LOADSTONE_AUTH", "pi");

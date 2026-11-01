@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync, backup } from "node:sqlite";
+import { parsePlan } from "./plans";
+export {
+  parsePlan,
+  savePlan,
+  planGoalKey,
+  planProgress,
+  requirementStatus,
+  formatGoals,
+} from "./plans";
+export type { CharacterPlan, PlanStep, PlanRequirement } from "./plans";
 
 export const factKinds = [
   "skill",
@@ -7,6 +17,7 @@ export const factKinds = [
   "item",
   "unlock",
   "goal",
+  "plan",
   "preference",
   "note",
 ] as const;
@@ -96,6 +107,18 @@ export function validateChange(change: Change): void {
           "Item needs {owned: boolean, quantity?: nonnegative integer}; quantity must agree with ownership.",
         );
       break;
+    case "plan": {
+      if (typeof value !== "string" || value.length > 150_000)
+        throw new Error("Plan must be bounded JSON text.");
+      const plan = parsePlan(value);
+      if (canonical(plan.target) !== canonical(change.key))
+        throw new Error("Plan target must match its key.");
+      for (const step of plan.steps)
+        for (const requirement of step.requirements)
+          if (requirement.kind === "skill")
+            validateChange({ kind: "skill", key: requirement.key, value: requirement.minimum! });
+      break;
+    }
     case "goal":
       if (!["active", "completed", "paused"].includes(String(value)) || typeof value !== "string")
         throw new Error("Goal status must be active, completed, or paused.");

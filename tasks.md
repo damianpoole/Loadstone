@@ -17,6 +17,7 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 - [x] **Local data controls**: Exclusive process lock, character export, full memory/session backup and documented restore/deletion.
 - [x] **Companion tests/docs**: Temporary SQLite, faux-model agent and interruption tests, Ink/command tests, provider and privacy guide.
 - [x] **Shared pi authentication**: Reuse existing ChatGPT OAuth via pi's public SDK and lock-protected refresh; pi model defaults, `/auth`, `/model pi`, and an explicit environment-only opt-out.
+- [x] **Outcome planning**: `/plan TARGET` researches areas, unlocks, items, boss preparation and quests; atomically saves root/nested goals, ordered acyclic dependencies, wiki sources and requirements. `/goals` computes readiness from character memory without inferring achieved progress; plan creation supports history, undo, export and durable replay.
 - [ ] **Future companion improvements**: In-app OAuth login UI, optional save-everything confirmation mode, JSON import, and deterministic quest dependency planning.
 
 ## New Commands

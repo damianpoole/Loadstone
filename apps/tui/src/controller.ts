@@ -3,6 +3,7 @@ import { cp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   MemoryStore,
+  formatGoals,
   factKinds,
   type Character,
   type Fact,
@@ -24,7 +25,8 @@ export const HELP = `Chat normally to ask for advice or report progress. Clear f
 /character [RSN] — list characters or select/create one (default Ironman)
 /create MODE RSN — modes: ironman, hardcore, group-ironman
 /sync — fetch fresh skills and quests; unavailable data never clears memory
-/memory [query] • /goals • /history • /pending
+/memory [query] • /goals [query] • /history • /pending
+/plan TARGET — research any outcome and save ordered, nested goals (e.g. /plan Prifddinas)
 /set KIND KEY = JSON — manually correct a fact, e.g. /set skill Herblore = 90
 /forget KIND KEY — propose deletion; /approve ID or /reject ID after reviewing
 /undo ID — undo a saved operation if no newer change affects its facts
@@ -219,13 +221,15 @@ export class Controller {
     if (command === "/memory" || command === "/goals") {
       this.update({
         notice: id
-          ? this.memory
-              .facts(id, args, command === "/goals" ? "goal" : undefined)
-              .map(
-                (f) =>
-                  `${f.kind} / ${f.key}: ${JSON.stringify(f.value)}\n  ${f.source}, observed ${new Date(f.observedAt).toISOString()}\n  ${f.evidence}`,
-              )
-              .join("\n") || "No saved facts match."
+          ? command === "/goals"
+            ? formatGoals(this.memory.facts(id), args)
+            : this.memory
+                .facts(id, args)
+                .map(
+                  (f) =>
+                    `${f.kind} / ${f.key}: ${JSON.stringify(f.value)}\n  ${f.source}, observed ${new Date(f.observedAt).toISOString()}\n  ${f.evidence}`,
+                )
+                .join("\n") || "No saved facts match."
           : "Select a character first.",
       });
       return;
@@ -294,6 +298,19 @@ export class Controller {
       await this.activate(this.state.character, session);
       this.update({
         notice: `Session ${session.id}. Character memory is shared across this character's sessions.`,
+      });
+      return;
+    }
+    if (command === "/plan") {
+      if (!args || args.length > 100)
+        throw new Error(
+          "Usage: /plan TARGET (1–100 characters), e.g. /plan Prifddinas or /plan obtain an abyssal whip.",
+        );
+      if (!this.companion) throw new Error("Session unavailable. Use /resume SESSION_ID.");
+      await this.companion.send(`/plan ${args}`);
+      this.update({
+        notice:
+          "Researching prerequisites against saved progress. Plans appear in /goals after saving; Esc cancels. Unknown progress stays unknown.",
       });
       return;
     }
