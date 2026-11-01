@@ -151,6 +151,54 @@ describe("character sidebar", () => {
   });
 });
 describe("Ink screen", () => {
+  it("filters slash commands, navigates without scrolling, and completes without executing", async () => {
+    const execute = vi.fn().mockResolvedValue(undefined);
+    const cancel = vi.fn().mockResolvedValue(undefined);
+    const controller = {
+      snapshot: () => state,
+      subscribe: () => () => {},
+      execute,
+      cancel,
+      report: vi.fn(),
+    } as unknown as Controller;
+    const ui = render(<App controller={controller} onQuit={vi.fn()} />);
+    const key = async (input: string) => {
+      ui.stdin.write(input);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    };
+    await key("/");
+    expect(ui.lastFrame()).toContain("› /help");
+    await key("\x1b[A");
+    expect(ui.lastFrame()).toContain("› /quit");
+    expect(ui.lastFrame()).not.toContain("Lines ");
+    await key("\x1b[B");
+    expect(ui.lastFrame()).toContain("› /help");
+    await key("mo");
+    expect(ui.lastFrame()).toContain("› /model");
+    expect(ui.lastFrame()).toContain("1/2");
+    await key("\x1b[B");
+    expect(ui.lastFrame()).toContain("› /models");
+    await key("\r");
+    expect(execute).not.toHaveBeenCalled();
+    expect(ui.lastFrame()).not.toContain("Enter complete");
+    await key("iron");
+    expect(ui.lastFrame()).toContain("/models iron");
+    await key("\r");
+    expect(execute).toHaveBeenCalledWith("/models iron");
+    await key("/sy");
+    expect(ui.lastFrame()).toContain("› /sync");
+    await key("\x1b");
+    expect(ui.lastFrame()).not.toContain("Enter complete");
+    expect(cancel).not.toHaveBeenCalled();
+    await key("n");
+    expect(ui.lastFrame()).toContain("› /sync");
+    await key("\x7f");
+    expect(ui.lastFrame()).toContain("› /sync");
+    await key("x");
+    expect(ui.lastFrame()).not.toContain("Enter complete");
+    await key("\r");
+    expect(execute).toHaveBeenCalledWith("/syx");
+  });
   it("scrolls long responses with arrows, pages, Home/End and the mouse without editing the draft", async () => {
     let current: AppState = {
       ...state,

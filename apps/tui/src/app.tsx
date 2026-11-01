@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { ChatInput, mouseReport } from "./chat-input";
+import { CommandMenu, matchingCommands } from "./slash-commands";
 import wrapAnsi from "wrap-ansi";
 import { plainText, renderMarkdown, terminalStyle } from "./markdown";
 export { plainText } from "./markdown";
@@ -90,6 +91,23 @@ export function CharacterSidebar({ state }: { state: AppState }) {
 export function App({ controller, onQuit }: { controller: Controller; onQuit: () => void }) {
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
   const [input, setInput] = useState("");
+  const [selectedCommand, setSelectedCommand] = useState(0);
+  const [dismissedCommand, setDismissedCommand] = useState<string | null>(null);
+  const changeInput = (value: string) => {
+    setInput(value);
+    setSelectedCommand(0);
+    setDismissedCommand(null);
+  };
+  const matches = matchingCommands(input);
+  const completion =
+    matches.length && dismissedCommand !== input
+      ? {
+          matches,
+          selected: Math.min(selectedCommand, matches.length - 1),
+          select: setSelectedCommand,
+          dismiss: () => setDismissedCommand(input),
+        }
+      : undefined;
   const [tab, setTab] = useState<"chat" | "memory">("chat");
   // null follows the tail; a line index anchors the viewport while new text streams in.
   const [topLine, setTopLine] = useState<number | null>(null);
@@ -134,6 +152,8 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
       onQuit();
       return;
     }
+    // ChatInput owns these keys while the command menu is open.
+    if (completion && (key.upArrow || key.downArrow || key.escape || key.return)) return;
     if (key.escape) {
       void controller.cancel().catch((error) => controller.report(error));
       return;
@@ -178,6 +198,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
           overflow="hidden"
         >
           <Text>{lines.slice(start, start + bodyHeight).join("\n")}</Text>
+          {completion && <CommandMenu completion={completion} height={bodyHeight} />}
         </Box>
         {sidebar && <CharacterSidebar state={state} />}
       </Box>
@@ -193,7 +214,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
       </Text>
       <Box borderStyle="single" borderColor="cyan">
         <Text color="cyan">› </Text>
-        <ChatInput value={input} onChange={setInput} onSubmit={submit} />
+        <ChatInput value={input} onChange={changeInput} onSubmit={submit} completion={completion} />
       </Box>
       <Text dimColor wrap="truncate-end">
         ↑↓/Wheel: scroll • PgUp/PgDn: page • Home/End • Tab • Esc: cancel • /help
