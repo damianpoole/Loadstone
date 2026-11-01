@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import stripAnsi from "strip-ansi";
+import { terminalStyle } from "./markdown";
 import { render, cleanup } from "ink-testing-library";
 import { App, CharacterSidebar, plainText, screenLines } from "./app";
 import type { AppState, Controller } from "./controller";
@@ -35,6 +37,44 @@ it("wraps chat for small terminals and labels item memory as last observed", () 
     },
   ];
   expect(screenLines({ ...state, facts }, "memory", 100).join("\n")).toContain("last observed");
+});
+it("colours user messages, formats only assistant Markdown, and wraps styles for scrollback", () => {
+  const previous = terminalStyle.level;
+  terminalStyle.level = 1;
+  try {
+    const formatted: AppState = {
+      ...state,
+      notice: "**literal notice**",
+      view: {
+        ...state.view,
+        messages: [
+          { id: "user", role: "You", text: "**literal user text** " + "progress ".repeat(8) },
+          { id: "assistant", role: "Assistant", text: "**" + "training ".repeat(8).trim() + "**" },
+          { id: "tool", role: "Tool", text: "**literal tool text**" },
+        ],
+        partial: "Streaming **bold** advice",
+      },
+    };
+    const original = JSON.stringify(formatted);
+    const lines = screenLines(formatted, "chat", 24);
+    const plain = stripAnsi(lines.join("\n"));
+    expect(plain).toContain("You: **literal user");
+    expect(plain.replace(/\s+/g, " ")).toContain("**literal notice**");
+    expect(plain).toContain("**literal tool");
+    expect(plain.replace(/\s+/g, " ")).toContain("Streaming bold");
+    expect(lines.every((line) => stripAnsi(line).length <= 24)).toBe(true);
+    const userLines = lines.filter((line) => line.includes("\x1b[36m"));
+    expect(userLines.length).toBeGreaterThan(1);
+    expect(userLines.every((line) => line.endsWith("\x1b[39m"))).toBe(true);
+    const assistantLines = lines.filter((line) => line.includes("training"));
+    expect(
+      assistantLines.every((line) => line.includes("\x1b[1m") && line.includes("\x1b[22m")),
+    ).toBe(true);
+    expect(assistantLines.every((line) => !line.includes("\x1b[36m"))).toBe(true);
+    expect(JSON.stringify(formatted)).toBe(original);
+  } finally {
+    terminalStyle.level = previous;
+  }
 });
 describe("character sidebar", () => {
   it("shows the selected name and distinguishes synced statuses from reported progress", () => {
@@ -123,7 +163,7 @@ describe("Ink screen", () => {
             role: "Assistant",
             text: Array.from(
               { length: 120 },
-              (_, i) => `Response line ${String(i).padStart(3, "0")}`,
+              (_, i) => `**Response line ${String(i).padStart(3, "0")}**`,
             ).join("\n"),
           },
         ],
@@ -158,12 +198,13 @@ describe("Ink screen", () => {
       ...current,
       view: {
         ...current.view,
-        partial: Array.from({ length: 20 }, (_, i) => `New streaming line ${i}`).join("\n"),
+        partial: Array.from({ length: 20 }, (_, i) => `**New streaming line ${i}**`).join("\n"),
       },
     };
     notify();
     await vi.waitFor(() => expect(ui.lastFrame()).toContain("of 141"));
     expect(ui.lastFrame()).toContain("Response line 000");
+    expect(ui.lastFrame()).not.toContain("**Response");
     ui.stdin.write("\x1b[<65;12;8M");
     await vi.waitFor(() => expect(ui.lastFrame()).toContain("Lines 4–"));
     expect(ui.lastFrame()).not.toContain("Response line 000");
