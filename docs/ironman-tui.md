@@ -137,7 +137,14 @@ colour leaking into the rest of the interface.
 
 ## Controls and commands
 
-- **Enter:** send a message/command. Paste text, then press Enter to send.
+- **Slash-command autocomplete:** type `/` at the start of the prompt to open a
+  command overlay. Keep typing to filter command names. **↑ / ↓** select an item
+  (wrapping at either end); **Enter** fills the prompt with the command and a space
+  without executing it. Add any arguments, then press Enter again to run it.
+  **Esc** dismisses the menu without cancelling active work. Editing the command
+  prefix reopens it; entering arguments or an unknown prefix hides it.
+- **Enter:** send a message/command when the completion menu is closed. Paste text,
+  then press Enter to send.
 - **Esc:** cancel the active agent run or manual RuneMetrics sync. Cancelling does
   not undo already committed memory; use `/undo` if needed.
 - **↑ / ↓ or mouse wheel/trackpad:** scroll the current view three lines at a time.

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Text, useInput } from "ink";
 import stripAnsi from "strip-ansi";
+import type { CommandCompletion } from "./slash-commands";
 
 /** SGR mouse reports arrive through Ink's input parser with the ESC prefix removed. */
 export function mouseReport(input: string): { button: number; pressed: boolean } | undefined {
@@ -13,15 +14,39 @@ export function ChatInput({
   value,
   onChange,
   onSubmit,
+  completion,
 }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
+  completion?: CommandCompletion;
 }) {
   const [position, setPosition] = useState(0);
   const characters = Array.from(value);
   const cursor = Math.min(position, characters.length);
   useInput((input, key) => {
+    if (completion && !key.ctrl && !key.meta) {
+      if (key.upArrow || key.downArrow) {
+        completion.select(
+          (completion.selected + (key.upArrow ? -1 : 1) + completion.matches.length) %
+            completion.matches.length,
+        );
+        return;
+      }
+      if (key.escape) {
+        completion.dismiss();
+        return;
+      }
+      if (key.return) {
+        const command = completion.matches[completion.selected];
+        if (command) {
+          const completed = `${command.name} `;
+          onChange(completed);
+          setPosition(completed.length);
+        }
+        return;
+      }
+    }
     if (
       mouseReport(input) ||
       key.escape ||
