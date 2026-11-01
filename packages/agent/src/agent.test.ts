@@ -121,6 +121,59 @@ describe("durable Ironman agent", () => {
     expect(memory.facts(id)[0].evidence).toContain("user entry");
     expect(memory.facts(memory.createCharacter("OtherIron").id)).toEqual([]);
   });
+  it("persists broad /plan requests as goals, not achievements, and rejects unrequested targets", async () => {
+    const { faux, root } = await setup();
+    const plan = {
+      target: "Prifddinas",
+      steps: [
+        {
+          id: "quest",
+          title: "Complete Plague's End",
+          dependsOn: [],
+          requirements: [{ kind: "quest", key: "Plague's End" }],
+          sources: ["https://runescape.wiki/w/Prifddinas"],
+          notes: "Test fixture, not a complete plan.",
+        },
+      ],
+    };
+    const savePlanCall = () =>
+      fauxAssistantMessage([fauxToolCall("save_character_plan", plan)], { stopReason: "toolUse" });
+    faux.setResponses([
+      savePlanCall(),
+      answer("Please use /plan."),
+      savePlanCall(),
+      answer("Please confirm the target."),
+      savePlanCall(),
+      fauxAssistantMessage(
+        [
+          fauxToolCall("get_character_plans", { target: "Prifddinas" }),
+          fauxToolCall("search_memory", { query: "Prifddinas", kind: "plan" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      answer("Plan saved. See /goals."),
+    ]);
+    await (await root.submit({ type: "input", content: "What is Prifddinas?" }, ctx)).wait(ctx);
+    expect(memory.facts(id)).toEqual([]);
+    await (await root.submit({ type: "input", content: "/plan Invention" }, ctx)).wait(ctx);
+    expect(memory.facts(id)).toEqual([]);
+    await (await root.submit({ type: "input", content: "/plan Prifddinas" }, ctx)).wait(ctx);
+    expect(memory.facts(id).map((f) => f.kind)).toEqual(["goal", "goal", "plan"]);
+    expect(memory.facts(id, "", "goal").map((f) => f.value)).toEqual(["active", "active"]);
+    expect(memory.history(id)).toHaveLength(1);
+    expect(memory.history(id)[0].changes).toHaveLength(3);
+    expect(memory.facts(id)[0].evidence).toContain("Requirements are advice");
+    const transcript = await root.context(ctx);
+    const plansResult = transcript.messages.find(
+      (m) => m.role === "toolResult" && m.toolName === "get_character_plans",
+    );
+    expect(JSON.stringify(plansResult)).toContain("needs confirmation");
+    expect(JSON.stringify(plansResult)).toContain("nextOffset");
+    const searchResult = transcript.messages.find(
+      (m) => m.role === "toolResult" && m.toolName === "search_memory",
+    );
+    expect(JSON.stringify(searchResult)).toContain("paged steps");
+  });
   it("rejects invented evidence and invalid facts without writing anything", async () => {
     const { faux, root } = await setup();
     faux.setResponses([
@@ -264,50 +317,72 @@ describe("durable Ironman agent", () => {
     });
     expect(memory.facts(id)).toHaveLength(2);
   });
-  it("resumes after memory committed but before the durable tool result, exactly once", async () => {
-    const extension = characterExtension(memory, id, "session");
-    const tool = extension.tools!.find((t) => t.name === "update_character_memory")!;
-    let effectFinished = false;
-    const interrupted = defineExtension({
-      ...extension,
-      wraps: [
-        ...(extension.wraps ?? []),
-        wrapTool(tool, (base) => ({
-          ...base,
-          execute: async (args, api, context) => {
-            await base.execute(args, api, context);
-            effectFinished = true;
-            await new Promise<void>((_resolve, reject) => {
-              const signal = context.abortSignal!;
-              if (signal.aborted) reject(signal.reason);
-              else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-            });
-            return {};
-          },
-        })),
-      ],
-    });
-    const first = await setup(interrupted);
-    first.faux.setResponses([save("I hit 90 Herblore")]);
-    await first.root.submit(
-      { type: "input", content: "I hit 90 Herblore", requestId: "request-1" },
-      ctx,
-    );
-    await vi.waitFor(() => expect(effectFinished).toBe(true));
-    await first.close();
-    expect(memory.history(id)).toHaveLength(1);
-    const second = await setup();
-    second.faux.setResponses([answer("Progress recovered.")]);
-    const settled = await (
-      await second.root.submit(
-        { type: "input", content: "I hit 90 Herblore", requestId: "request-1" },
-        ctx,
-      )
-    ).wait(ctx);
-    expect(settled.status).toBe("done");
-    expect(memory.history(id)).toHaveLength(1);
-    expect(memory.facts(id)[0].value).toBe(90);
-  });
+  it.each(["update_character_memory", "save_character_plan"])(
+    "resumes %s after memory committed but before the durable tool result, exactly once",
+    async (toolName) => {
+      const planning = toolName === "save_character_plan";
+      const content = planning ? "/plan Prifddinas" : "I hit 90 Herblore";
+      const response = planning
+        ? fauxAssistantMessage(
+            [
+              fauxToolCall(toolName, {
+                target: "Prifddinas",
+                steps: [
+                  {
+                    id: "enter",
+                    title: "Enter the city",
+                    dependsOn: [],
+                    requirements: [],
+                    sources: ["https://runescape.wiki/w/Prifddinas"],
+                    notes: "Manual checklist fixture.",
+                  },
+                ],
+              }),
+            ],
+            { stopReason: "toolUse" },
+          )
+        : save(content);
+      const extension = characterExtension(memory, id, "session");
+      const tool = extension.tools!.find((t) => t.name === toolName)!;
+      let effectFinished = false;
+      const interrupted = defineExtension({
+        ...extension,
+        wraps: [
+          ...(extension.wraps ?? []),
+          wrapTool(tool, (base) => ({
+            ...base,
+            execute: async (args, api, context) => {
+              await base.execute(args, api, context);
+              effectFinished = true;
+              await new Promise<void>((_resolve, reject) => {
+                const signal = context.abortSignal!;
+                if (signal.aborted) reject(signal.reason);
+                else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+              });
+              return {};
+            },
+          })),
+        ],
+      });
+      const first = await setup(interrupted);
+      first.faux.setResponses([response]);
+      await first.root.submit({ type: "input", content, requestId: "request-1" }, ctx);
+      await vi.waitFor(() => expect(effectFinished).toBe(true));
+      await first.close();
+      expect(memory.history(id)).toHaveLength(1);
+      const second = await setup();
+      second.faux.setResponses([answer("Progress recovered.")]);
+      const settled = await (
+        await second.root.submit({ type: "input", content, requestId: "request-1" }, ctx)
+      ).wait(ctx);
+      expect(settled.status).toBe("done");
+      expect(memory.history(id)).toHaveLength(1);
+      if (planning) {
+        expect(memory.facts(id)).toHaveLength(3);
+        expect(memory.facts(id, "", "goal").every((f) => f.value === "active")).toBe(true);
+      } else expect(memory.facts(id)[0].value).toBe(90);
+    },
+  );
   it("streams through the public companion adapter, reopens history, and cancels", async () => {
     const faux = fauxProvider({ tokensPerSecond: 1000 });
     const models = createModels();

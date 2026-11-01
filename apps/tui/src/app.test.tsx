@@ -5,6 +5,7 @@ import { terminalStyle } from "./markdown";
 import { render, cleanup } from "ink-testing-library";
 import { App, CharacterSidebar, plainText, screenLines } from "./app";
 import type { AppState, Controller } from "./controller";
+import { MemoryStore, savePlan } from "@loadstone/memory";
 
 afterEach(cleanup);
 const state: AppState = {
@@ -38,6 +39,46 @@ it("wraps chat for small terminals and labels item memory as last observed", () 
     },
   ];
   expect(screenLines({ ...state, facts }, "memory", 100).join("\n")).toContain("last observed");
+});
+it("shows plan roots in the sidebar and labels generated metadata without dumping JSON", () => {
+  const memory = new MemoryStore(":memory:");
+  try {
+    const character = memory.createCharacter("Iron");
+    savePlan(
+      memory,
+      {
+        characterId: character.id,
+        operationId: "plan",
+        source: "user",
+        observedAt: Date.now(),
+        evidence: "/plan Prifddinas",
+      },
+      {
+        target: "Prifddinas",
+        steps: [
+          {
+            id: "enter",
+            title: "Enter the city",
+            dependsOn: [],
+            requirements: [],
+            sources: ["https://runescape.wiki/w/Prifddinas"],
+            notes: "Manual checklist fixture.",
+          },
+        ],
+      },
+    );
+    const planned = { ...state, character, facts: memory.facts(character.id) };
+    const ui = render(<CharacterSidebar state={planned} />);
+    expect(ui.lastFrame()).toContain("• prifddinas");
+    expect(ui.lastFrame()).not.toContain("• prifddinas / enter");
+    expect(ui.lastFrame()).not.toContain('"steps"');
+    const text = screenLines(planned, "memory", 100).join("\n");
+    expect(text).toContain("Generated advice");
+    expect(text).toContain("use /goals");
+    expect(text).not.toContain('"steps"');
+  } finally {
+    memory.close();
+  }
 });
 it("colours user messages, formats only assistant Markdown, and wraps styles for scrollback", () => {
   const previous = terminalStyle.level;

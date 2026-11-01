@@ -26,13 +26,18 @@ describe("slash commands", () => {
     const ui = render(
       <Box width={80} height={6}>
         <CommandMenu
-          completion={{ matches: slashCommands, selected: 23, select: () => {}, dismiss: () => {} }}
+          completion={{
+            matches: slashCommands,
+            selected: slashCommands.length - 1,
+            select: () => {},
+            dismiss: () => {},
+          }}
           height={6}
         />
       </Box>,
     );
     expect(ui.lastFrame()).toContain("› /quit");
-    expect(ui.lastFrame()).toContain("24/24");
+    expect(ui.lastFrame()).toContain(`${slashCommands.length}/${slashCommands.length}`);
     expect(ui.lastFrame()).not.toContain("/help");
     expect(ui.lastFrame()!.split("\n").length).toBeLessThanOrEqual(6);
   });
