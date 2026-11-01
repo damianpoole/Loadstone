@@ -82,7 +82,9 @@ agent can save skills, quests, relevant items, unlocks, goals and preferences.
 Use `/memory`, `/history`, `/pending` and `/undo ID` to inspect and correct saves.
 Memory editing and RuneMetrics sync also work without model authentication.
 Use `/auth` to inspect credential status and `/model pi` to switch an existing
-session to pi's default model.
+session to pi's default model. Assistant responses render terminal Markdown, and
+your messages appear in cyan to distinguish them from agent replies (`NO_COLOR=1`
+disables styling).
 
 See [the TUI guide](docs/ironman-tui.md) for provider configuration, keyboard controls,
 backup/restore, privacy, recovery guarantees and architecture. The TUI is currently

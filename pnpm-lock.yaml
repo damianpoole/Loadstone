@@ -57,9 +57,15 @@ importers:
       '@loadstone/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
       ink:
         specifier: ^7.1.1
         version: 7.1.1(@types/react@19.3.0)(react@19.3.1)
+      marked:
+        specifier: 18.0.11
+        version: 18.0.11
       proper-lockfile:
         specifier: ^4.1.2
         version: 4.1.2

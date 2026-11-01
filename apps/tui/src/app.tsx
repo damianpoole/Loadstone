@@ -1,15 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { ChatInput, mouseReport } from "./chat-input";
 import wrapAnsi from "wrap-ansi";
-import stripAnsi from "strip-ansi";
+import { plainText, renderMarkdown, terminalStyle } from "./markdown";
+export { plainText } from "./markdown";
 import type { Controller, AppState } from "./controller";
 
-/** Never allow wiki/model/user text to inject terminal control sequences. */
-export function plainText(text: string): string {
-  // eslint-disable-next-line no-control-regex -- intentionally strip untrusted terminal controls
-  return stripAnsi(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
-}
 export function screenLines(state: AppState, tab: "chat" | "memory", width: number): string[] {
   const content =
     tab === "memory"
@@ -21,11 +17,18 @@ export function screenLines(state: AppState, tab: "chat" | "memory", width: numb
           .join("\n") ||
         "No memory yet. /sync imports progress, or tell the agent about your character."
       : [
-          ...state.view.messages.map((m) => `${m.role}: ${m.text}\n`),
-          ...(state.view.partial ? [`Assistant: ${state.view.partial}`] : []),
-          ...(state.notice ? [`Loadstone: ${state.notice}`] : []),
+          ...state.view.messages.map((m) => {
+            if (m.role === "Assistant") return `Assistant: ${renderMarkdown(m.text)}\n`;
+            const text = plainText(`${m.role}: ${m.text}`);
+            return `${m.role === "You" ? terminalStyle.cyan(text) : text}\n`;
+          }),
+          ...(state.view.partial ? [`Assistant: ${renderMarkdown(state.view.partial)}`] : []),
+          ...(state.notice ? [`Loadstone: ${plainText(state.notice)}`] : []),
         ].join("\n");
-  return wrapAnsi(plainText(content), Math.max(10, width), { hard: true, trim: false }).split("\n");
+  return wrapAnsi(tab === "memory" ? plainText(content) : content, Math.max(10, width), {
+    hard: true,
+    trim: false,
+  }).split("\n");
 }
 export function CharacterSidebar({ state }: { state: AppState }) {
   const recent = [...state.facts].sort((a, b) => b.recordedAt - a.recordedAt).slice(0, 3);
@@ -109,7 +112,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
   const sidebar = size.columns >= 100;
   const bodyHeight = Math.max(3, size.rows - 8);
   const width = Math.max(10, size.columns - (sidebar ? 34 : 2));
-  const lines = screenLines(state, tab, width);
+  const lines = useMemo(() => screenLines(state, tab, width), [state, tab, width]);
   const maxScroll = Math.max(0, lines.length - bodyHeight);
   const start = topLine === null ? maxScroll : Math.min(topLine, maxScroll);
   const scrolled = start < maxScroll;
