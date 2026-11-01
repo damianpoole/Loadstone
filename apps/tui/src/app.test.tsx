@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import stripAnsi from "strip-ansi";
+import stringWidth from "string-width";
 import { terminalStyle } from "./markdown";
 import { render, cleanup } from "ink-testing-library";
 import { App, CharacterSidebar, plainText, screenLines } from "./app";
@@ -121,6 +122,36 @@ it("gives every wrapped tool line its own background and text colour without lea
     terminalStyle.level = 0;
     const uncoloured = screenLines(formatted, "chat", 24).join("\n");
     expect(uncoloured).toBe(stripAnsi(lines.join("\n")));
+  } finally {
+    terminalStyle.level = previous;
+  }
+});
+it("fills the chat width behind tool output, including blank and Unicode lines", () => {
+  const previous = terminalStyle.level;
+  terminalStyle.level = 1;
+  try {
+    const formatted: AppState = {
+      ...state,
+      view: {
+        ...state.view,
+        partial: "",
+        messages: [
+          { id: "tool", role: "Tool", text: "Short\n\n界面 🪨 e\u0301\n" + "result ".repeat(20) },
+        ],
+      },
+    };
+    for (const width of [10, 24, 48]) {
+      const lines = screenLines(formatted, "chat", width);
+      const toolLines = lines.filter((line) => line.includes("\x1b[100m"));
+      expect(toolLines.length).toBeGreaterThan(3);
+      expect(toolLines.some((line) => stripAnsi(line).trim() === "")).toBe(true);
+      for (const line of toolLines) {
+        expect(stringWidth(line)).toBe(width);
+        expect(line.endsWith("\x1b[39m\x1b[49m")).toBe(true);
+      }
+      // The message separator remains outside the coloured panel.
+      expect(lines.at(-1)).toBe("");
+    }
   } finally {
     terminalStyle.level = previous;
   }
