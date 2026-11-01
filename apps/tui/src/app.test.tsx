@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import stripAnsi from "strip-ansi";
+import stringWidth from "string-width";
 import { terminalStyle } from "./markdown";
 import { render, cleanup } from "ink-testing-library";
 import { App, CharacterSidebar, plainText, screenLines } from "./app";
@@ -72,6 +73,85 @@ it("colours user messages, formats only assistant Markdown, and wraps styles for
     ).toBe(true);
     expect(assistantLines.every((line) => !line.includes("\x1b[36m"))).toBe(true);
     expect(JSON.stringify(formatted)).toBe(original);
+  } finally {
+    terminalStyle.level = previous;
+  }
+});
+it("gives every wrapped tool line its own background and text colour without leaking styles", () => {
+  const previous = terminalStyle.level;
+  terminalStyle.level = 1;
+  try {
+    const formatted: AppState = {
+      ...state,
+      notice: "Ready",
+      view: {
+        ...state.view,
+        partial: "Streaming advice",
+        messages: [
+          {
+            id: "tool",
+            role: "Tool",
+            text: "search_wiki: **literal** " + "result ".repeat(12) + "\n\x1b[31mDetails\x1b[0m",
+          },
+          { id: "assistant", role: "Assistant", text: "Next steps" },
+          { id: "system", role: "System", text: "Session saved" },
+        ],
+      },
+    };
+    const lines = screenLines(formatted, "chat", 24);
+    const toolLines = lines.filter((line) => line.includes("\x1b[100m"));
+    expect(toolLines.length).toBeGreaterThan(2);
+    for (const line of toolLines) {
+      expect(line).toContain("\x1b[37m");
+      expect(line).toContain("\x1b[39m");
+      expect(line).toContain("\x1b[49m");
+      // Each scrollback line must render safely in isolation.
+      expect(stripAnsi(line).length).toBeLessThanOrEqual(24);
+    }
+    expect(stripAnsi(lines.join("\n"))).toContain("**literal**");
+    expect(lines.join("\n")).not.toContain("\x1b[31m");
+    for (const line of lines.filter((line) => !toolLines.includes(line))) {
+      expect(line).not.toContain("\x1b[100m");
+      expect(line).not.toContain("\x1b[37m");
+    }
+    expect(lines.join("\n")).toContain("Next steps");
+    expect(lines.join("\n")).toContain("Session saved");
+    expect(lines.join("\n").replace(/\s+/g, " ")).toContain("Streaming advice");
+    expect(lines.join("\n")).toContain("Loadstone: Ready");
+
+    terminalStyle.level = 0;
+    const uncoloured = screenLines(formatted, "chat", 24).join("\n");
+    expect(uncoloured).toBe(stripAnsi(lines.join("\n")));
+  } finally {
+    terminalStyle.level = previous;
+  }
+});
+it("fills the chat width behind tool output, including blank and Unicode lines", () => {
+  const previous = terminalStyle.level;
+  terminalStyle.level = 1;
+  try {
+    const formatted: AppState = {
+      ...state,
+      view: {
+        ...state.view,
+        partial: "",
+        messages: [
+          { id: "tool", role: "Tool", text: "Short\n\n界面 🪨 e\u0301\n" + "result ".repeat(20) },
+        ],
+      },
+    };
+    for (const width of [10, 24, 48]) {
+      const lines = screenLines(formatted, "chat", width);
+      const toolLines = lines.filter((line) => line.includes("\x1b[100m"));
+      expect(toolLines.length).toBeGreaterThan(3);
+      expect(toolLines.some((line) => stripAnsi(line).trim() === "")).toBe(true);
+      for (const line of toolLines) {
+        expect(stringWidth(line)).toBe(width);
+        expect(line.endsWith("\x1b[39m\x1b[49m")).toBe(true);
+      }
+      // The message separator remains outside the coloured panel.
+      expect(lines.at(-1)).toBe("");
+    }
   } finally {
     terminalStyle.level = previous;
   }

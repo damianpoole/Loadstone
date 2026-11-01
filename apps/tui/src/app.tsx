@@ -3,6 +3,7 @@ import { Box, Text, useInput, useStdout } from "ink";
 import { ChatInput, mouseReport } from "./chat-input";
 import { CommandMenu, matchingCommands } from "./slash-commands";
 import wrapAnsi from "wrap-ansi";
+import stringWidth from "string-width";
 import { plainText, renderMarkdown, terminalStyle } from "./markdown";
 export { plainText } from "./markdown";
 import type { Controller, AppState } from "./controller";
@@ -21,6 +22,20 @@ export function screenLines(state: AppState, tab: "chat" | "memory", width: numb
           ...state.view.messages.map((m) => {
             if (m.role === "Assistant") return `Assistant: ${renderMarkdown(m.text)}\n`;
             const text = plainText(`${m.role}: ${m.text}`);
+            if (m.role === "Tool") {
+              // Style after wrapping: wrap-ansi tracks only one active SGR colour,
+              // so combining foreground/background before wrapping loses the background.
+              return (
+                wrapAnsi(text, Math.max(10, width), { hard: true, trim: false })
+                  .split("\n")
+                  .map((line) =>
+                    terminalStyle.bgBlackBright.white(
+                      line + " ".repeat(Math.max(0, Math.max(10, width) - stringWidth(line))),
+                    ),
+                  )
+                  .join("\n") + "\n"
+              );
+            }
             return `${m.role === "You" ? terminalStyle.cyan(text) : text}\n`;
           }),
           ...(state.view.partial ? [`Assistant: ${renderMarkdown(state.view.partial)}`] : []),
@@ -129,7 +144,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
   }, [stdout]);
   const sidebar = size.columns >= 100;
   const bodyHeight = Math.max(3, size.rows - 8);
-  const width = Math.max(10, size.columns - (sidebar ? 34 : 2));
+  const width = Math.max(10, size.columns - (sidebar ? 32 : 0));
   const lines = useMemo(() => screenLines(state, tab, width), [state, tab, width]);
   const maxScroll = Math.max(0, lines.length - bodyHeight);
   const start = topLine === null ? maxScroll : Math.min(topLine, maxScroll);
