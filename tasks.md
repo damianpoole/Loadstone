@@ -6,6 +6,7 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 
 - [x] **Ink app**: Chat, streaming/tool status, responsive sidebar, scrollable chat/memory views, character onboarding and session resume.
 - [x] **Readable chat formatting**: Terminal Markdown for assistant responses, distinct cyan user messages, safe ANSI handling, and width-aware styled scrollback.
+- [x] **Distinct tool output**: White text on a dark-grey background separates tool messages from chat, with safe wrapping, independent scrollback lines, and `NO_COLOR` support.
 - [x] **Sidebar clarity**: Selected character name, explicit last-saved-facts labeling, and sync/user provenance rather than implying recent in-game activity.
 - [x] **Slash-command autocomplete**: Filterable overlay above the prompt, wrapping arrow-key selection, Enter to fill (not execute), and Escape to dismiss without cancelling work.
 - [x] **Conversation scrollback**: Mouse wheel/trackpad, arrow/page keys, Home/End, and a stable reading position during streamed responses; navigation never changes the draft.

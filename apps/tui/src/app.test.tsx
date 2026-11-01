@@ -76,6 +76,55 @@ it("colours user messages, formats only assistant Markdown, and wraps styles for
     terminalStyle.level = previous;
   }
 });
+it("gives every wrapped tool line its own background and text colour without leaking styles", () => {
+  const previous = terminalStyle.level;
+  terminalStyle.level = 1;
+  try {
+    const formatted: AppState = {
+      ...state,
+      notice: "Ready",
+      view: {
+        ...state.view,
+        partial: "Streaming advice",
+        messages: [
+          {
+            id: "tool",
+            role: "Tool",
+            text: "search_wiki: **literal** " + "result ".repeat(12) + "\n\x1b[31mDetails\x1b[0m",
+          },
+          { id: "assistant", role: "Assistant", text: "Next steps" },
+          { id: "system", role: "System", text: "Session saved" },
+        ],
+      },
+    };
+    const lines = screenLines(formatted, "chat", 24);
+    const toolLines = lines.filter((line) => line.includes("\x1b[100m"));
+    expect(toolLines.length).toBeGreaterThan(2);
+    for (const line of toolLines) {
+      expect(line).toContain("\x1b[37m");
+      expect(line).toContain("\x1b[39m");
+      expect(line).toContain("\x1b[49m");
+      // Each scrollback line must render safely in isolation.
+      expect(stripAnsi(line).length).toBeLessThanOrEqual(24);
+    }
+    expect(stripAnsi(lines.join("\n"))).toContain("**literal**");
+    expect(lines.join("\n")).not.toContain("\x1b[31m");
+    for (const line of lines.filter((line) => !toolLines.includes(line))) {
+      expect(line).not.toContain("\x1b[100m");
+      expect(line).not.toContain("\x1b[37m");
+    }
+    expect(lines.join("\n")).toContain("Next steps");
+    expect(lines.join("\n")).toContain("Session saved");
+    expect(lines.join("\n").replace(/\s+/g, " ")).toContain("Streaming advice");
+    expect(lines.join("\n")).toContain("Loadstone: Ready");
+
+    terminalStyle.level = 0;
+    const uncoloured = screenLines(formatted, "chat", 24).join("\n");
+    expect(uncoloured).toBe(stripAnsi(lines.join("\n")));
+  } finally {
+    terminalStyle.level = previous;
+  }
+});
 describe("character sidebar", () => {
   it("shows the selected name and distinguishes synced statuses from reported progress", () => {
     const facts: AppState["facts"] = [

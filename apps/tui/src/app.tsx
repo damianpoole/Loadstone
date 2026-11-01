@@ -21,6 +21,16 @@ export function screenLines(state: AppState, tab: "chat" | "memory", width: numb
           ...state.view.messages.map((m) => {
             if (m.role === "Assistant") return `Assistant: ${renderMarkdown(m.text)}\n`;
             const text = plainText(`${m.role}: ${m.text}`);
+            if (m.role === "Tool") {
+              // Style after wrapping: wrap-ansi tracks only one active SGR colour,
+              // so combining foreground/background before wrapping loses the background.
+              return (
+                wrapAnsi(text, Math.max(10, width), { hard: true, trim: false })
+                  .split("\n")
+                  .map((line) => terminalStyle.bgBlackBright.white(line))
+                  .join("\n") + "\n"
+              );
+            }
             return `${m.role === "You" ? terminalStyle.cyan(text) : text}\n`;
           }),
           ...(state.view.partial ? [`Assistant: ${renderMarkdown(state.view.partial)}`] : []),
