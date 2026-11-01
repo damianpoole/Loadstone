@@ -32,7 +32,7 @@ export function renderMarkdown(text: string, style: ChalkInstance = terminalStyl
       case "codespan":
         return style.yellow(token.text);
       case "heading":
-        return `${style.bold.underline(render(token.tokens))}\n\n`;
+        return `${style.bold(render(token.tokens))}\n\n`;
       case "paragraph":
         return `${render(token.tokens)}\n\n`;
       case "text":

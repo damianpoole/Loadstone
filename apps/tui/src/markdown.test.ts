@@ -13,9 +13,18 @@ describe("terminal Markdown", () => {
     expect(stripAnsi(result)).toBe("Training\n\nUse bold and italic, Herblore, and obsolete.");
     expect(result).toContain("\x1b[1m");
     expect(result).toContain("\x1b[3m");
-    expect(result).toContain("\x1b[4m");
+    expect(result).not.toContain("\x1b[4m");
     expect(result).toContain("\x1b[9m");
     expect(result).toContain(style.yellow("Herblore"));
+  });
+  it("uses bold rather than underline for emphasis and headings, reserving underline for links", () => {
+    expect(renderMarkdown("**Bold text**", style)).toBe("\x1b[1mBold text\x1b[22m");
+    for (let depth = 1; depth <= 6; depth++) {
+      expect(renderMarkdown(`${"#".repeat(depth)} Heading`, style)).toBe("\x1b[1mHeading\x1b[22m");
+    }
+    expect(renderMarkdown("[Wiki](https://runescape.wiki/)", style)).toBe(
+      "\x1b[4mWiki\x1b[24m (https://runescape.wiki/)",
+    );
   });
   it("renders nested lists, ordered lists and task lists", () => {
     const result = stripAnsi(

@@ -118,7 +118,11 @@ headings, **bold**, _italic_, strikethrough, inline/fenced code, lists/task list
 quotes, links and tables. Code preserves indentation; tables use a compact
 pipe-delimited layout that wraps to the available width. Links show their URL;
 images show their description/URL rather than downloading anything. Raw HTML
-is displayed literally, not interpreted.
+is displayed literally, not interpreted. Headings and strong emphasis use bold,
+not underline; underline is reserved for links. Terminals use a fixed character
+size, so heading levels cannot have browser-style font sizes. Bold/italic appearance
+depends on your terminal font and settings; this is a terminal layout, not an
+HTML/CSS rendering engine.
 
 Your messages are **cyan**, while assistant text uses the terminal's default
 foreground with Markdown styling. User messages, tool output and notices stay
