@@ -16,6 +16,30 @@ Built with **Node.js**, **pnpm**, **Vite Plus**, and **TypeScript**, with tools 
 - **Token Reduction**: Headings-only output and JSON field selection for smaller payloads.
 - **Ironman TUI**: Ink chat with a pi-durable agent, wiki tools, resumable sessions, and local SQLite character memory. Automatic saves have provenance, conflict review, and undo.
 
+## TUI screenshots
+
+The Ironman companion keeps commands, goals, and saved character progress in one
+terminal interface. These screenshots use a demo character with manually entered
+sample progress, not a live RuneMetrics account.
+
+### Commands and character overview
+
+Type `/` to discover commands while keeping your active goals and last saved facts
+in view.
+
+![Loadstone TUI showing slash-command autocomplete and the character sidebar with active goals and last saved facts](docs/screenshots/tui-commands.png)
+
+### Persistent character memory
+
+Press **Tab** to browse saved skills, quests, goals, and preferences, including their
+source and last-observed date.
+
+![Loadstone TUI memory view showing sample skills, a completed quest, goals, and training preferences with provenance](docs/screenshots/tui-memory.png)
+
+Run `pnpm run tui` from a source checkout to try it. See
+[Ironman companion setup](#ironman-companion-source-builds) below for a quick start
+or [the TUI guide](docs/ironman-tui.md) for the full command reference.
+
 ## Installation
 
 ### For Users (Recommended)
