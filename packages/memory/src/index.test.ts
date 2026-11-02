@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { MemoryStore, validateChange, type Change, type Update } from "./index";
+import { MemoryStore, sessionTitle, validateChange, type Change, type Update } from "./index";
 
 describe("character memory", () => {
   let dir: string;
@@ -59,6 +59,41 @@ describe("character memory", () => {
     expect(store.history(id)).toHaveLength(1);
     expect(store.setting("activeCharacter")).toBe(id);
     expect(store.sessions(id)).toHaveLength(1);
+  });
+  it("stores bounded opening-request titles once, scoped to the character", () => {
+    const session = store.createSession(id);
+    const other = store.createCharacter("OtherIron").id;
+    store.nameSession(other, session.id, "Wrong character");
+    store.nameSession(id, session.id, "   ");
+    expect(store.sessions(id)[0].title).toBe("");
+    store.nameSession(id, session.id, "/plan unlock Invention\n with Smithing");
+    store.nameSession(id, session.id, "A later unrelated topic");
+    store.close();
+    store = new MemoryStore(join(dir, "memory.sqlite"));
+    expect(store.sessions(id)[0].title).toBe("Plan: unlock Invention with Smithing");
+    expect(sessionTitle("word ".repeat(20))).toBe(`${Array(12).fill("word").join(" ")}…`);
+    expect(Array.from(sessionTitle("😀".repeat(100))).length).toBeLessThanOrEqual(80);
+  });
+  it("migrates v1 sessions without losing IDs, settings or timestamps", () => {
+    const path = join(dir, "legacy.sqlite");
+    const db = new DatabaseSync(path);
+    db.exec(`CREATE TABLE sessions (id TEXT PRIMARY KEY, characterId TEXT, createdAt INTEGER);
+      CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      INSERT INTO sessions VALUES ('old', 'iron', 123);
+      INSERT INTO settings VALUES ('session:iron', 'old');
+      PRAGMA user_version=1;`);
+    db.close();
+    const legacy = new MemoryStore(path);
+    try {
+      expect(legacy.sessions("iron")).toEqual([
+        { id: "old", characterId: "iron", createdAt: 123, title: "" },
+      ]);
+      expect(legacy.setting("session:iron")).toBe("old");
+      legacy.nameSession("iron", "old", "Old conversation");
+      expect(legacy.sessions("iron")[0].title).toBe("Old conversation");
+    } finally {
+      legacy.close();
+    }
   });
   it("deduplicates a replay even after undo", () => {
     const request = update(id, "tool:1", [

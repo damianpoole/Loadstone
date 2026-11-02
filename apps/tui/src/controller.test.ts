@@ -56,6 +56,33 @@ describe("TUI commands", () => {
     await controller.initialize();
     expect(controller.state.character?.name).toBe("OtherIron");
   });
+  it("names accepted chats and plans, lists titles, and retains titles across later turns", async () => {
+    await controller.execute("/character MyIron");
+    await controller.execute("How do I unlock Invention?");
+    const first = controller.state.session!;
+    expect(first.title).toBe("How do I unlock Invention?");
+    await controller.execute("Now Slayer");
+    expect(controller.state.session?.title).toBe(first.title);
+    await controller.execute("/new");
+    expect(controller.state.session?.title).toBe("");
+    await controller.execute("/plan Prifddinas");
+    expect(controller.state.session?.title).toBe("Plan: Prifddinas");
+    expect(controller.state.sessions).toHaveLength(2);
+    for (const command of ["/sessions", "/session", "/resume"]) {
+      await controller.execute(command);
+      expect(controller.state.notice).toContain(first.title);
+      expect(controller.state.notice).toContain("Plan: Prifddinas");
+    }
+    await controller.execute("/sessions invention");
+    expect(controller.state.notice).toContain(first.title);
+    expect(controller.state.notice).not.toContain("Plan: Prifddinas");
+    await controller.execute(`/resume ${first.id}`);
+    expect(controller.state.session?.title).toBe(first.title);
+    await controller.execute("/new");
+    agent.send.mockRejectedValueOnce(new Error("No credentials"));
+    await controller.execute("Not submitted");
+    expect(controller.state.session?.title).toBe("");
+  });
   it("sends broad planning requests verbatim, validates targets, and respects the busy guard", async () => {
     await controller.execute("/plan Prifddinas");
     expect(controller.state.notice).toContain("Select a character");

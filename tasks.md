@@ -5,6 +5,7 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 ## Ironman Companion TUI
 
 - [x] **Ink app**: Chat, streaming/tool status, responsive sidebar, scrollable chat/memory views, character onboarding and session resume.
+- [x] **Session picker**: Searchable title/ID autocomplete for `/resume`, `/sessions`, and `/session`, stable local opening-request titles, and migration/backfill for older sessions.
 - [x] **Readable chat formatting**: Terminal Markdown for assistant responses, distinct cyan user messages, safe ANSI handling, and width-aware styled scrollback.
 - [x] **Distinct tool output**: White text on a full-chat-width dark-grey background separates tool messages from chat, with safe wrapping, independent scrollback lines, and `NO_COLOR` support.
 - [x] **Sidebar clarity**: Selected character name, explicit last-saved-facts labeling, and sync/user provenance rather than implying recent in-game activity.

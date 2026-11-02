@@ -81,6 +81,29 @@ describe("durable Ironman agent", () => {
     closers.push(close);
     return { faux, harness, root, close };
   }
+  it("backfills an unnamed legacy session from its opening request rather than its latest turn", async () => {
+    const session = memory.createSession(id);
+    const path = join(dir, "legacy-session.sqlite");
+    const { faux, root, close } = await setup(undefined, path);
+    faux.setResponses([answer(), answer()]);
+    await (await root.submit({ type: "input", content: "/plan unlock Invention" }, ctx)).wait(ctx);
+    await (await root.submit({ type: "input", content: "Now discuss Slayer" }, ctx)).wait(ctx);
+    await close();
+    expect(memory.sessions(id)[0].title).toBe("");
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const companion = await openCompanion({
+      path,
+      memory,
+      characterId: id,
+      sessionId: session.id,
+      models,
+      model: { provider: faux.getModel().provider, modelId: faux.getModel().id },
+      onChange: () => {},
+    });
+    closers.push(() => companion.close());
+    expect(memory.sessions(id)[0].title).toBe("Plan: unlock Invention");
+  });
   it("gives safe login guidance before submitting chat when credentials are missing or refresh fails", async () => {
     const faux = fauxProvider();
     const models = createModels();
