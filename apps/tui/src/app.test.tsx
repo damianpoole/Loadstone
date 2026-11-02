@@ -320,6 +320,49 @@ describe("Ink screen", () => {
     await key("\r");
     expect(execute).toHaveBeenCalledWith("/syx");
   });
+  it("finds sessions by title, switches with Enter, and dismisses without cancelling", async () => {
+    const current: AppState = {
+      ...state,
+      character: { id: "iron", name: "MyIron", mode: "ironman", createdAt: 0 },
+      sessions: [
+        { id: "first-id", characterId: "iron", createdAt: 1, title: "Plan: Invention" },
+        { id: "second-id", characterId: "iron", createdAt: 2, title: "Slayer training" },
+      ],
+    };
+    const execute = vi.fn().mockResolvedValue(undefined);
+    const cancel = vi.fn();
+    const controller = {
+      snapshot: () => current,
+      subscribe: () => () => {},
+      execute,
+      cancel,
+      report: vi.fn(),
+    } as unknown as Controller;
+    const ui = render(<App controller={controller} onQuit={vi.fn()} />);
+    const key = async (input: string) => {
+      ui.stdin.write(input);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    };
+    await key("/sessions");
+    expect(ui.lastFrame()).toContain("› Plan: Invention");
+    expect(ui.lastFrame()).toContain("Enter switch");
+    await key("\x1b[A");
+    expect(ui.lastFrame()).toContain("› Slayer training");
+    expect(ui.lastFrame()).not.toContain("Lines ");
+    await key("\x1b");
+    expect(cancel).not.toHaveBeenCalled();
+    expect(ui.lastFrame()).not.toContain("Enter switch");
+    await key(" invent");
+    expect(ui.lastFrame()).toContain("› Plan: Invention");
+    expect(ui.lastFrame()).not.toContain("Slayer training");
+    await key("\r");
+    expect(execute).toHaveBeenCalledExactlyOnceWith("/resume first-id");
+    await key("/resume missing");
+    expect(ui.lastFrame()).toContain("No matching sessions");
+    await key("\r");
+    await key("/session");
+    expect(ui.lastFrame()).toContain("› Plan: Invention");
+  });
   it("scrolls long responses with arrows, pages, Home/End and the mouse without editing the draft", async () => {
     let current: AppState = {
       ...state,

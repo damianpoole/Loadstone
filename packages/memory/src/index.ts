@@ -65,6 +65,22 @@ export interface ChatSession {
   id: string;
   characterId: string;
   createdAt: number;
+  title: string;
+}
+
+/** A bounded, local summary of the opening request; no extra provider request. */
+export function sessionTitle(message: string): string {
+  const text = message
+    .replace(/^\/plan\s+/i, "Plan: ")
+    // eslint-disable-next-line no-control-regex -- titles must remain a single safe terminal line
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = text.split(" ");
+  const summary = words.slice(0, 12).join(" ");
+  return summary.length > 80 || words.length > 12
+    ? `${Array.from(summary).slice(0, 77).join("").trimEnd()}…`
+    : summary;
 }
 const canonical = (key: string) => key.trim().replace(/\s+/g, " ").toLowerCase();
 const questRanks: Record<string, number> = { NOT_STARTED: 0, STARTED: 1, COMPLETED: 2 };
@@ -138,7 +154,7 @@ export class MemoryStore {
       "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;",
     );
     const version = this.db.prepare("PRAGMA user_version").get()?.user_version as number;
-    if (version > 1) {
+    if (version > 2) {
       this.db.close();
       throw new Error("Memory database is newer than this app. Upgrade Loadstone.");
     }
@@ -151,6 +167,10 @@ export class MemoryStore {
       CREATE TABLE sessions (id TEXT PRIMARY KEY, characterId TEXT NOT NULL REFERENCES characters(id), createdAt INTEGER NOT NULL);
       CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       PRAGMA user_version=1; COMMIT;`);
+    if (version < 2)
+      this.db.exec(`BEGIN IMMEDIATE;
+      ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
+      PRAGMA user_version=2; COMMIT;`);
   }
   close() {
     this.db.close();
@@ -400,11 +420,19 @@ export class MemoryStore {
   }
   createSession(characterId: string): ChatSession {
     this.character(characterId);
-    const session = { id: randomUUID(), characterId, createdAt: Date.now() };
+    const session = { id: randomUUID(), characterId, createdAt: Date.now(), title: "" };
     this.db
-      .prepare("INSERT INTO sessions VALUES (?, ?, ?)")
-      .run(session.id, characterId, session.createdAt);
+      .prepare("INSERT INTO sessions (id, characterId, createdAt, title) VALUES (?, ?, ?, ?)")
+      .run(session.id, characterId, session.createdAt, session.title);
     return session;
+  }
+  /** Fill once, including legacy sessions when their history is loaded. */
+  nameSession(characterId: string, id: string, message: string): void {
+    const title = sessionTitle(message);
+    if (title)
+      this.db
+        .prepare("UPDATE sessions SET title=? WHERE characterId=? AND id=? AND title=''")
+        .run(title, characterId, id);
   }
   sessions(characterId: string): ChatSession[] {
     return this.db

@@ -128,6 +128,13 @@ export async function openCompanion(options: {
   );
   try {
     const root = await harness.root(BACKGROUND_CONTEXT, { agent: { model: options.model } });
+    if (
+      !options.memory.sessions(options.characterId).find((s) => s.id === options.sessionId)?.title
+    ) {
+      const first = await root.entries({ order: "ascending" }, 50, undefined, BACKGROUND_CONTEXT);
+      const opening = first.items.flatMap(entryMessages).find((message) => message.role === "You");
+      if (opening) options.memory.nameSession(options.characterId, options.sessionId, opening.text);
+    }
     const watch = await root.watch(BACKGROUND_CONTEXT);
     const entries = new Map<number, EntryRecord>();
     // 1.4.0 watches expose active context, not the newer upstream window API.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Box, Text, useInput, useStdout } from "ink";
 import { ChatInput, mouseReport } from "./chat-input";
-import { CommandMenu, matchingCommands } from "./slash-commands";
+import { CommandMenu, matchingCommands, matchingSessions, sessionQuery } from "./slash-commands";
 import wrapAnsi from "wrap-ansi";
 import stringWidth from "string-width";
 import { plainText, renderMarkdown, terminalStyle } from "./markdown";
@@ -126,7 +126,10 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
     setSelectedCommand(0);
     setDismissedCommand(null);
   };
-  const matches = matchingCommands(input);
+  const pickingSession = sessionQuery(input) !== undefined;
+  const matches = pickingSession
+    ? matchingSessions(input, state.sessions ?? [], state.session?.id)
+    : matchingCommands(input);
   const completion =
     matches.length && dismissedCommand !== input
       ? {
@@ -217,7 +220,7 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
       </Text>
       <Text dimColor wrap="truncate-end">
         {model ? `${model.provider}/${model.modelId}` : "Model configured on session creation"} |{" "}
-        {state.pending} pending memory reviews
+        {state.pending} pending memory reviews | {plainText(state.session?.title || "New session")}
       </Text>
       <Box height={bodyHeight} flexDirection="row">
         <Box
@@ -227,6 +230,13 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
         >
           <Text>{lines.slice(start, start + bodyHeight).join("\n")}</Text>
           {completion && <CommandMenu completion={completion} height={bodyHeight} />}
+          {pickingSession && !matches.length && dismissedCommand !== input && (
+            <Text color="yellow">
+              {state.character
+                ? "No matching sessions. Edit your search or use /new."
+                : "Select a character first with /character YourRSN."}
+            </Text>
+          )}
         </Box>
         {sidebar && <CharacterSidebar state={state} />}
       </Box>

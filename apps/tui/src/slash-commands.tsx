@@ -1,4 +1,6 @@
 import { Box, Text } from "ink";
+import type { ChatSession } from "@loadstone/memory";
+import { plainText } from "./markdown";
 
 /** Commands handled by the controller, plus the app-level /quit command. */
 export const slashCommands = [
@@ -17,8 +19,9 @@ export const slashCommands = [
   { name: "/reject", description: "ID — reject a pending change" },
   { name: "/undo", description: "ID — undo a saved operation" },
   { name: "/new", description: "Start a new chat session" },
-  { name: "/sessions", description: "List chat sessions" },
-  { name: "/resume", description: "SESSION_ID — resume a chat" },
+  { name: "/sessions", description: "[query] — find and switch chat sessions" },
+  { name: "/session", description: "[query] — find and switch chat sessions" },
+  { name: "/resume", description: "[title or ID] — find and resume a chat" },
   { name: "/earlier", description: "Load older messages" },
   { name: "/retry", description: "Retry the last failed turn" },
   { name: "/model", description: "PROVIDER MODEL_ID or pi — select a model" },
@@ -34,8 +37,42 @@ export function matchingCommands(value: string) {
   return slashCommands.filter((command) => command.name.startsWith(value.toLowerCase()));
 }
 
+export interface CompletionItem {
+  name: string;
+  description: string;
+  value?: string;
+  submit?: boolean;
+}
+
+export function sessionQuery(value: string): string | undefined {
+  const match = /^\/(?:resume|sessions|session)(?:\s+(.*))?$/i.exec(value);
+  return match ? (match[1] ?? "") : undefined;
+}
+
+/** Match title words in any order, with gaps allowed (and keep exact IDs usable). */
+export function matchingSessions(
+  value: string,
+  sessions: ChatSession[],
+  activeId?: string,
+): CompletionItem[] {
+  const query = sessionQuery(value);
+  if (query === undefined) return [];
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  return sessions
+    .filter((session) => {
+      const text = `${session.title} ${session.id}`.toLowerCase();
+      return terms.every((term) => text.includes(term));
+    })
+    .map((session) => ({
+      name: `${plainText(session.title || "Untitled session")} · ${session.id.slice(0, 8)}`,
+      description: `${new Date(session.createdAt).toLocaleString()}${session.id === activeId ? " • active" : ""}`,
+      value: `/resume ${session.id}`,
+      submit: true,
+    }));
+}
+
 export interface CommandCompletion {
-  matches: typeof slashCommands;
+  matches: CompletionItem[];
   selected: number;
   select: (index: number) => void;
   dismiss: () => void;
@@ -74,7 +111,8 @@ export function CommandMenu({
       ))}
       {height >= 4 && (
         <Text dimColor wrap="truncate-end">
-          ↑↓ select • Enter complete • Esc dismiss • {selected + 1}/{matches.length}
+          ↑↓ select • Enter {matches[selected]?.submit ? "switch" : "complete"} • Esc dismiss •{" "}
+          {selected + 1}/{matches.length}
         </Text>
       )}
     </Box>
