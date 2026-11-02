@@ -363,6 +363,47 @@ describe("Ink screen", () => {
     await key("/session");
     expect(ui.lastFrame()).toContain("› Plan: Invention");
   });
+  it.each(["agent", "sync"])(
+    "dismisses an empty session search without cancelling active %s work",
+    async (work) => {
+      const current: AppState = {
+        ...state,
+        character: { id: "iron", name: "MyIron", mode: "ironman", createdAt: 0 },
+        sessions: [],
+        processing: work === "sync",
+        view: { ...state.view, busy: work === "agent" },
+      };
+      const cancel = vi.fn().mockResolvedValue(undefined);
+      const execute = vi.fn();
+      const controller = {
+        snapshot: () => current,
+        subscribe: () => () => {},
+        execute,
+        cancel,
+        report: vi.fn(),
+      } as unknown as Controller;
+      const ui = render(<App controller={controller} onQuit={vi.fn()} />);
+      const key = async (input: string) => {
+        ui.stdin.write(input);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      };
+      await key("/resume typo");
+      expect(ui.lastFrame()).toContain("No matching sessions");
+      await key("\x1b");
+      expect(ui.lastFrame()).not.toContain("No matching sessions");
+      expect(ui.lastFrame()).toContain("/resume typo");
+      expect(cancel).not.toHaveBeenCalled();
+      // Editing the query reopens the search, including its empty-results feedback.
+      await key("x");
+      expect(ui.lastFrame()).toContain("No matching sessions");
+      await key("\x1b");
+      expect(cancel).not.toHaveBeenCalled();
+      // Once dismissed, Escape retains its normal cancellation behavior.
+      await key("\x1b");
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
   it("scrolls long responses with arrows, pages, Home/End and the mouse without editing the draft", async () => {
     let current: AppState = {
       ...state,

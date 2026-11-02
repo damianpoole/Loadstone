@@ -186,6 +186,11 @@ export function App({ controller, onQuit }: { controller: Controller; onQuit: ()
     // ChatInput owns these keys while the command menu is open.
     if (completion && (key.upArrow || key.downArrow || key.escape || key.return)) return;
     if (key.escape) {
+      // An empty session search is still a picker, even without a completion menu.
+      if (pickingSession && dismissedCommand !== input) {
+        setDismissedCommand(input);
+        return;
+      }
       void controller.cancel().catch((error) => controller.report(error));
       return;
     }
