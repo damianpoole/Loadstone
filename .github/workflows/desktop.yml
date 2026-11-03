@@ -31,7 +31,7 @@ jobs:
       - run: pnpm run check-types
       - run: pnpm run lint
       # The baseline has unrelated CLI/wiki formatting debt; gate the new slice.
-      - run: pnpm exec vp fmt --check apps/desktop packages/application apps/tui/src/controller.ts docs/desktop.md .github/workflows/desktop.yml
+      - run: pnpm exec vp fmt --check apps/desktop packages/application apps/tui/src/controller.ts packages/wiki-client/src/api.test.ts docs/desktop.md .github/workflows/desktop.yml
       - run: pnpm run test
       - name: Build unsigned preview installers (never publish)
         run: pnpm run desktop:make
