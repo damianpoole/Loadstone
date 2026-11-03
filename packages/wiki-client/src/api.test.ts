@@ -254,11 +254,7 @@ describe("getCategoryMembers", () => {
   it("should return category members", async () => {
     const mockResponse = {
       query: {
-        categorymembers: [
-          { title: "Quest 1" },
-          { title: "Quest 2" },
-          { title: "Quest 3" },
-        ],
+        categorymembers: [{ title: "Quest 1" }, { title: "Quest 2" }, { title: "Quest 3" }],
       },
     };
 
@@ -335,8 +331,20 @@ describe("getCategoryMembers", () => {
 describe("getRSProfile", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(global.fetch).mockReset();
     suppressConsoleErrors();
   });
+
+  // Profile and quest cache lookups run concurrently. Filesystem scheduling can
+  // reverse their fetch order, so responses must be selected by URL, not call count.
+  function mockRuneMetrics(profile: unknown, quests: unknown = { quests: [] }, questStatus = 200) {
+    vi.mocked(global.fetch).mockImplementation(async (input) => {
+      const isProfile = String(input).includes("/profile/profile?");
+      return new Response(JSON.stringify(isProfile ? profile : quests), {
+        status: isProfile ? 200 : questStatus,
+      });
+    });
+  }
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -368,15 +376,7 @@ describe("getRSProfile", () => {
       ],
     };
 
-    (global.fetch as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockProfileResponse,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockQuestsResponse,
-      });
+    mockRuneMetrics(mockProfileResponse, mockQuestsResponse);
 
     const profile = await getRSProfile("TestUser");
 
@@ -402,15 +402,7 @@ describe("getRSProfile", () => {
       skillvalues: [{ id: 0, level: 99, xp: 13034431, rank: 1000 }],
     };
 
-    (global.fetch as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockProfileResponse,
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        statusText: "Private",
-      });
+    mockRuneMetrics(mockProfileResponse, {}, 403);
 
     const profile = await getRSProfile("TestUser");
 
@@ -423,10 +415,7 @@ describe("getRSProfile", () => {
       error: "PROFILE_PRIVATE",
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    mockRuneMetrics(mockResponse);
 
     const profile = await getRSProfile("NonExistentUser");
 
@@ -434,10 +423,7 @@ describe("getRSProfile", () => {
   });
 
   it("should handle API errors", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      statusText: "Server Error",
-    });
+    vi.mocked(global.fetch).mockImplementation(async () => new Response(null, { status: 500 }));
 
     const profile = await getRSProfile("TestUser");
 
@@ -459,15 +445,7 @@ describe("getRSProfile", () => {
       ],
     };
 
-    (global.fetch as any)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockProfileResponse,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ quests: [] }),
-      });
+    mockRuneMetrics(mockProfileResponse);
 
     const profile = await getRSProfile("TestUser");
 

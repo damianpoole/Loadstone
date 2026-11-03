@@ -1,0 +1,2 @@
+# Keep source/format checks consistent on Windows; auto leaves binary assets alone.
+* text=auto eol=lf

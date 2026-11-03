@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { getRSProfile, type RSProfile } from "@loadstone/wiki-client";
+import { getRSProfile } from "@loadstone/wiki-client";
 import { buildCacheOptions, type CacheCliOptions } from "./cache-options";
 
 export async function profile(
@@ -23,9 +23,7 @@ export async function profile(
 
   if (!data) {
     if (options.json) {
-      console.log(
-        JSON.stringify({ error: "Profile not found or private" }, null, 2),
-      );
+      console.log(JSON.stringify({ error: "Profile not found or private" }, null, 2));
     } else {
       console.log(chalk.red("Profile not found or private."));
     }
@@ -61,7 +59,7 @@ export async function profile(
       };
     } else {
       // Default: return full profile without raw data
-      const { raw, ...profileWithoutRaw } = data;
+      const { raw: _raw, ...profileWithoutRaw } = data;
       outputData = options.includeRaw ? data : profileWithoutRaw;
     }
 

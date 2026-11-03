@@ -2,6 +2,22 @@
 
 Features and improvements planned to enhance the CLI for use with Ironman progress LLM agents.
 
+## Desktop Companion
+
+See [the desktop architecture and sequenced delivery plan](docs/desktop.md) for
+implementation details, acceptance criteria, packaging commands and release blockers.
+
+- [x] **Slice 1 — shared runtime and desktop vertical slice**: Electron/React app, shared application controller, validated sandboxed IPC, character/memory display, sync, streamed durable chat and restart restoration; unsigned installer configuration and Windows/macOS/Linux CI with packaged/installed-app smoke tests.
+- [ ] **Slice 2 — onboarding/authentication**: Graphical provider login, private Loadstone credentials, explicit shared-pi consent, model discovery and structured non-terminal errors.
+- [ ] **Slice 3 — player UI/data controls**: Memory review/history/undo, sessions/goals, exports/backups, accessibility, chat polish and performance validation alongside RS3.
+- [ ] **Slice 4 — safe public distribution**: Signing/notarization, license notices, supported-platform validation, automatic updates, schema compatibility, consistent pre-migration backups and recovery tests.
+- [ ] **Slice 5 — website/launch**: Signed downloads, setup/privacy/cost documentation, troubleshooting and an external-player pilot.
+
+Slice 1 is an internal preview. Local macOS package tests do not establish other
+platform compatibility; Windows NSIS and Ubuntu DEB installation tests run in CI.
+Linux startup now has terminal diagnostics, visible-first restoration, graphics
+backend overrides and a documented sandbox troubleshooting path.
+
 ## Ironman Companion TUI
 
 - [x] **Ink app**: Chat, streaming/tool status, responsive sidebar, scrollable chat/memory views, character onboarding and session resume.

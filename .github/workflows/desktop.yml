@@ -1,0 +1,84 @@
+name: Desktop slice
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Validate and package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-24.04]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check-types
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm run test
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0t64 libnss3 libgbm1 libasound2t64 libxss1 libatk-bridge2.0-0t64
+      - name: Build unsigned preview installers (never publish)
+        run: pnpm run desktop:make
+      - name: Smoke test the packaged executable
+        if: runner.os != 'Linux'
+        run: pnpm run desktop:smoke
+        env:
+          LOADSTONE_SMOKE_PACKAGED: "1"
+      - name: Smoke test Linux with the sandbox enabled
+        if: runner.os == 'Linux'
+        run: |
+          # Ubuntu restricts unprivileged user namespaces. Configure only this
+          # trusted CI build's setuid helper instead of using --no-sandbox.
+          sudo chown root:root apps/desktop/release/linux-unpacked/chrome-sandbox
+          sudo chmod 4755 apps/desktop/release/linux-unpacked/chrome-sandbox
+          xvfb-run -a pnpm run desktop:smoke
+        env:
+          LOADSTONE_SMOKE_PACKAGED: "1"
+      - name: Install and smoke test Linux Debian package
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ./apps/desktop/release/*.deb
+          LOADSTONE_SMOKE_EXECUTABLE=/opt/Loadstone/loadstone-desktop xvfb-run -a pnpm run desktop:smoke
+      - name: Install and smoke test Windows NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/release/*.exe | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer missing" }
+          $destination = "$env:RUNNER_TEMP\LoadstoneInstalled"
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          $env:LOADSTONE_SMOKE_EXECUTABLE = "$destination\Loadstone.exe"
+          pnpm run desktop:smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loadstone-desktop-preview-${{ runner.os }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.AppImage

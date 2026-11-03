@@ -40,6 +40,31 @@ Run `pnpm run tui` from a source checkout to try it. See
 [Ironman companion setup](#ironman-companion-source-builds) below for a quick start
 or [the TUI guide](docs/ironman-tui.md) for the full command reference.
 
+## Desktop preview (source builds)
+
+The Electron desktop client is an internal preview of a self-contained player app.
+It shares the TUI's character memory, agent and resumable conversations, with a
+sandboxed React interface. Guided login and production updates are not included yet.
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run desktop
+```
+
+Close the TUI first: both apps lock the same `~/.loadstone` data directory. Use
+`LOADSTONE_HOME` for an isolated preview. Existing pi credentials or provider
+environment keys are currently required for AI chat; memory and RuneMetrics sync
+work without authentication. The packaged app bundles its runtime and does not
+require players to install Node or pi.
+
+See [Desktop architecture and delivery plan](docs/desktop.md) for packaging,
+tests, current limitations, and acceptance criteria for the remaining slices.
+`pnpm run desktop:make` builds **unsigned internal preview** installers; the desktop
+CI workflow produces Windows/macOS/Linux artifacts. They are not public signed releases.
+For a missing window on Linux, see [launch troubleshooting](docs/desktop.md#linux-launch-troubleshooting).
+Startup errors are printed in the terminal; the window no longer waits for session
+restoration or a compositor `ready-to-show` event.
+
 ## Installation
 
 ### For Users (Recommended)
@@ -171,6 +196,8 @@ loadstone page "Abyssal whip" --no-cache
 
 - `apps/cli`: The existing command-line application.
 - `apps/tui`: Ink Ironman companion UI and commands.
+- `apps/desktop`: Electron/React desktop preview, secure bridge and packaging.
+- `packages/application`: Shared companion orchestration and typed desktop adapter.
 - `packages/agent`: pi-durable runtime and scoped wiki/memory tools.
 - `packages/memory`: SQLite character memory, history, review and undo.
 - `packages/wiki-client`: Shared library for RS3 Wiki and RuneMetrics API interaction.

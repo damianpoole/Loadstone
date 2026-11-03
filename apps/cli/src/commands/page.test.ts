@@ -30,8 +30,7 @@ describe("page command", () => {
       title: "Abyssal whip",
       pageid: 12345,
       revid: 67890,
-      extract:
-        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
+      extract: '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
     };
 
     vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
@@ -54,8 +53,7 @@ describe("page command", () => {
       title: "Abyssal whip",
       pageid: 12345,
       revid: 67890,
-      extract:
-        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
+      extract: '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
     };
 
     vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
