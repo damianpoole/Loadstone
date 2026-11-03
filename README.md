@@ -60,7 +60,10 @@ require players to install Node or pi.
 See [Desktop architecture and delivery plan](docs/desktop.md) for packaging,
 tests, current limitations, and acceptance criteria for the remaining slices.
 `pnpm run desktop:make` builds **unsigned internal preview** installers; the desktop
-CI workflow produces Windows/macOS artifacts. They are not public signed releases.
+CI workflow produces Windows/macOS/Linux artifacts. They are not public signed releases.
+For a missing window on Linux, see [launch troubleshooting](docs/desktop.md#linux-launch-troubleshooting).
+Startup errors are printed in the terminal; the window no longer waits for session
+restoration or a compositor `ready-to-show` event.
 
 ## Installation
 

@@ -29,13 +29,10 @@ describe("category command", () => {
 
     await category("Novice quests", {});
 
-    expect(wikiClient.getCategoryMembers).toHaveBeenCalledWith(
-      "Novice quests",
-      {
-        limit: 50,
-        cache: {},
-      },
-    );
+    expect(wikiClient.getCategoryMembers).toHaveBeenCalledWith("Novice quests", {
+      limit: 50,
+      cache: {},
+    });
     expect(consoleSpy).toHaveBeenCalled();
   });
 
@@ -59,13 +56,10 @@ describe("category command", () => {
 
     await category("Novice quests", { limit: "10" });
 
-    expect(wikiClient.getCategoryMembers).toHaveBeenCalledWith(
-      "Novice quests",
-      {
-        limit: 10,
-        cache: {},
-      },
-    );
+    expect(wikiClient.getCategoryMembers).toHaveBeenCalledWith("Novice quests", {
+      limit: 10,
+      cache: {},
+    });
   });
 
   it("should handle empty categories", async () => {

@@ -15,12 +15,14 @@ The first slice establishes the runtime and packaging boundary:
 - A shared application controller used by both desktop and TUI.
 - A sandboxed renderer, narrow validated IPC and no provider credentials in React.
 - Self-contained application code and dependencies inside Electron's ASAR.
-- Unsigned Windows NSIS and macOS DMG/ZIP build configuration and CI artifacts.
+- Unsigned Windows NSIS, macOS DMG/ZIP and Linux DEB/AppImage packaging and CI artifacts.
 - Deterministic durable-chat integration tests and real Electron/package smoke tests.
 
 **Not included:** graphical provider login, a Loadstone-owned credential store,
 review/undo controls, a session browser, production signing/notarization, automatic
-updates, migration backups, branding/icons, public downloads, or Linux validation.
+updates, migration backups, branding/icons, or public downloads. Native Wayland,
+AppImage runtime behavior and distribution coverage beyond the Linux CI runner
+still need manual validation.
 The preview is not yet suitable for general RS3 players. Some backend notices still
 refer to TUI slash commands; those are not desktop instructions.
 
@@ -33,8 +35,19 @@ pnpm install --frozen-lockfile
 pnpm run desktop
 ```
 
-This builds and launches Electron. It deliberately uses production local files,
-not a dev web server or hot reload. Rebuild/relaunch after edits.
+This builds **and launches** Electron. The launcher prints an explicit startup
+message, strips an inherited `ELECTRON_RUN_AS_NODE` flag, forwards Electron's stderr,
+and reports abnormal exits with Linux-specific guidance. It deliberately uses
+production local files, not a dev web server or hot reload. Rebuild/relaunch after
+edits. To launch an already-built app without rebuilding:
+
+```bash
+pnpm --filter loadstone-desktop run launch
+```
+
+The window is visible before session/auth restoration completes; startup does not
+rely on the compositor emitting `ready-to-show`. Startup errors are also written
+to the terminal, not just a possibly hidden native dialog.
 
 To avoid touching existing TUI data during development:
 
@@ -180,16 +193,92 @@ application integration test uses a real pi-durable harness and deterministic fa
 provider to verify chat delivery and persisted conversation replay after reopening.
 No test-only provider or credential bypass is exposed by the production app.
 
-`.github/workflows/desktop.yml` builds and tests Windows/macOS, smoke-tests the
-packaged application, and installs/smoke-tests Windows NSIS in CI. It uploads
-short-lived **unsigned internal preview** installers, not public releases. Linux
-has an AppImage target but no validated support claim yet. Artifacts still need a
-clean user-machine check with development tools absent; CI contains build tools.
+`.github/workflows/desktop.yml` builds and tests Windows, macOS and Ubuntu 24.04,
+smoke-tests the packaged application, and installs/smoke-tests Windows NSIS and
+Linux DEB in CI. The Linux job uses Xvfb/X11 with Chromium's sandbox **enabled**;
+it configures only the trusted CI build's sandbox helper, not system-wide user
+namespace restrictions. The smoke script asserts the window is actually visible.
+CI runs the full repository formatting check, not a scoped exception.
+
+It uploads short-lived **unsigned internal preview** installers, not public
+releases. Linux AppImage execution, native Wayland, GPU/driver differences and
+other distributions still need manual testing. Artifacts also need a clean
+user-machine check with development tools absent; CI contains build tools.
 
 Local validation on the development Mac covers the actual packaged ARM64 app.
 Windows installer results must be established by the Windows CI job; a macOS build
 alone is not evidence of Windows compatibility. Live provider login/chat and
 RuneMetrics availability require separate manual acceptance testing.
+
+## Linux launch troubleshooting
+
+Run from a graphical session and capture both the build and launch output:
+
+```bash
+pnpm run desktop 2>&1 | tee /tmp/loadstone-desktop.log
+```
+
+After the build you should see `[Loadstone] Build complete. Starting the desktop
+app…` followed by `[Loadstone] Desktop window loaded.`. If not, the terminal
+should show the failed phase, native error or abnormal exit. Logs may contain
+local filesystem paths; review them before sharing. Never share auth.json or keys.
+
+### Display and GPU/compositor problems
+
+- A headless SSH session/container without `DISPLAY` or `WAYLAND_DISPLAY` cannot
+  open a desktop window. The source launcher now fails clearly in this case.
+- For a black/missing window or GPU crash, try software rendering:
+
+  ```bash
+  LOADSTONE_DISABLE_GPU=1 pnpm run desktop
+  ```
+
+- On a Wayland session with XWayland available, compare X11 behavior:
+
+  ```bash
+  LOADSTONE_OZONE_PLATFORM=x11 pnpm run desktop
+  ```
+
+  `LOADSTONE_OZONE_PLATFORM=wayland` requests native Wayland explicitly. These are
+  opt-in diagnostics, not forced defaults. They do not disable the sandbox.
+
+- `error while loading shared libraries` identifies a missing system dependency.
+  Install the package supplying the named library for your distribution (common
+  Electron dependencies include GTK 3, NSS, GBM and ALSA). Linux DEB installation
+  resolves declared system dependencies through the package manager.
+
+### Chromium sandbox / Ubuntu user namespace restrictions
+
+If stderr mentions `No usable sandbox`, `SUID sandbox helper`, `namespace`, or
+`zygote_host_impl_linux`, the failure is before the React app starts. Ubuntu 24.04+
+can restrict unprivileged user namespaces through AppArmor. Do not run the app as
+root, globally weaken AppArmor, or use `--no-sandbox` as a permanent workaround.
+
+Prefer installing the trusted DEB preview on Debian/Ubuntu: electron-builder's
+installer configures its sandbox helper and, where supported, an application
+AppArmor profile. This is different from running an unpacked development download.
+
+For a **trusted local Electron dependency only**, a system administrator can set
+up its setuid helper if required by the distribution:
+
+```bash
+cd apps/desktop
+helper="$(node -p 'require("node:path").join(require("node:path").dirname(require("electron")), "chrome-sandbox")')"
+sudo chown root:root "$helper"
+sudo chmod 4755 "$helper"
+cd ../..
+pnpm run desktop
+```
+
+This is an explicit privileged change to one downloaded executable, not something
+the launcher performs automatically. Verify/trust the Electron dependency first;
+a reinstall can replace the helper and require reconfiguration. Follow your
+distribution's security guidance if a setuid helper is not permitted. AppImage
+mounts can have different sandbox constraints and are not assumed equivalent to
+an installed DEB.
+
+If the app still does not open, share the launch output, distribution/version,
+X11/Wayland session type, and whether either graphics diagnostic changes it.
 
 ## Next slices, in order
 

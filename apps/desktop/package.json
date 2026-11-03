@@ -9,7 +9,8 @@
   "main": "dist/main.cjs",
   "scripts": {
     "build": "vp pack && vp pack src/preload.ts --no-clean && vp build --config vite.renderer.config.ts",
-    "start": "pnpm run build && electron .",
+    "start": "pnpm run build && node dist/launch.cjs",
+    "launch": "node dist/launch.cjs",
     "check-types": "tsc --noEmit",
     "test": "vp test run",
     "smoke": "node scripts/smoke.mjs",
@@ -69,8 +70,11 @@
     },
     "linux": {
       "target": [
+        "deb",
         "AppImage"
       ],
+      "executableName": "loadstone-desktop",
+      "maintainer": "Loadstone contributors <damianpoole@users.noreply.github.com>",
       "category": "Game"
     }
   }

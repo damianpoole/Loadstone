@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: {
-    entry: ["src/main.ts"],
+    entry: ["src/main.ts", "src/launch.ts"],
     format: ["cjs"],
     platform: "node",
     target: "node24",

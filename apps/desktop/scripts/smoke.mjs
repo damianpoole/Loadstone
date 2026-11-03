@@ -23,7 +23,9 @@ const packagedPath =
         "MacOS",
         "Loadstone",
       )
-    : join(appDirectory, "release", "win-unpacked", "Loadstone.exe");
+    : process.platform === "linux"
+      ? join(appDirectory, "release", "linux-unpacked", "loadstone-desktop")
+      : join(appDirectory, "release", "win-unpacked", "Loadstone.exe");
 const executable =
   process.env.LOADSTONE_SMOKE_EXECUTABLE ||
   (process.env.LOADSTONE_SMOKE_PACKAGED === "1" ? packagedPath : undefined);
@@ -69,6 +71,11 @@ try {
     packaged: app.isPackaged,
   }));
   assert.ok(runtime.electron);
+  assert.equal(
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+    true,
+    "startup window is visible",
+  );
   if (executable) assert.equal(runtime.packaged, true);
   assert.equal(await page.evaluate(() => typeof window.require), "undefined");
   assert.equal(await page.evaluate(() => typeof window.process), "undefined");
@@ -93,7 +100,10 @@ try {
   await page.getByRole("button", { name: "Open character" }).click();
   await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
   await page.getByRole("button", { name: "New conversation" }).waitFor({ state: "visible" });
-  await page.waitForFunction(() => !document.querySelector("textarea")?.disabled);
+  await page.waitForFunction(async () => {
+    const state = await window.loadstone.snapshot();
+    return Boolean(state.session && state.view.model && !state.processing);
+  });
   const snapshot = await page.evaluate(() => window.loadstone.snapshot());
   assert.ok(snapshot.session?.id, "durable session opens using bundled pi SDK");
   assert.ok(snapshot.view.model, "model catalog loads from bundled resources");

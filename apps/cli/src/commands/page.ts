@@ -67,14 +67,10 @@ export async function page(
       const sectionKeys = Object.keys(structuredContent);
       for (const requested of requestedSections) {
         const requestedLower = requested.toLowerCase();
-        const exactMatch = sectionKeys.find(
-          (key) => key.toLowerCase() === requestedLower,
-        );
+        const exactMatch = sectionKeys.find((key) => key.toLowerCase() === requestedLower);
         const fuzzyMatch = exactMatch
           ? null
-          : sectionKeys.find((key) =>
-              key.toLowerCase().includes(requestedLower),
-            );
+          : sectionKeys.find((key) => key.toLowerCase().includes(requestedLower));
         const matchKey = exactMatch ?? fuzzyMatch;
         if (matchKey) {
           filtered[matchKey] = structuredContent[matchKey];
@@ -83,16 +79,12 @@ export async function page(
       structuredContent = filtered;
     }
 
-    const sections = options.headings
-      ? Object.keys(structuredContent)
-      : structuredContent;
+    const sections = options.headings ? Object.keys(structuredContent) : structuredContent;
 
     const result = {
       title: data.title,
       pageId: data.pageid,
-      url: `https://runescape.wiki/w/${encodeURIComponent(
-        data.title.replace(/ /g, "_"),
-      )}`,
+      url: `https://runescape.wiki/w/${encodeURIComponent(data.title.replace(/ /g, "_"))}`,
       lastModified: data.revid,
       sections,
     };
@@ -115,9 +107,7 @@ export async function page(
       console.log(sections[key]);
     } else {
       console.log(chalk.red(`Section '${options.section}' not found.`));
-      console.log(
-        chalk.dim(`Available sections: ${Object.keys(sections).join(", ")}`),
-      );
+      console.log(chalk.dim(`Available sections: ${Object.keys(sections).join(", ")}`));
     }
     return;
   }
