@@ -1,0 +1,62 @@
+name: Desktop slice
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Validate and package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.19.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check-types
+      - run: pnpm run lint
+      # The baseline has unrelated CLI/wiki formatting debt; gate the new slice.
+      - run: pnpm exec vp fmt --check apps/desktop packages/application apps/tui/src/controller.ts docs/desktop.md .github/workflows/desktop.yml
+      - run: pnpm run test
+      - name: Build unsigned preview installers (never publish)
+        run: pnpm run desktop:make
+      - name: Smoke test the packaged executable
+        run: pnpm run desktop:smoke
+        env:
+          LOADSTONE_SMOKE_PACKAGED: "1"
+      - name: Install and smoke test Windows NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/release/*.exe | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer missing" }
+          $destination = "$env:RUNNER_TEMP\LoadstoneInstalled"
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          $env:LOADSTONE_SMOKE_EXECUTABLE = "$destination\Loadstone.exe"
+          pnpm run desktop:smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: loadstone-desktop-preview-${{ runner.os }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip

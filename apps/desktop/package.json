@@ -1,0 +1,77 @@
+{
+  "name": "loadstone-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local-first RuneScape Ironman companion",
+  "license": "UNLICENSED",
+  "author": "Loadstone contributors",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "vp pack && vp pack src/preload.ts --no-clean && vp build --config vite.renderer.config.ts",
+    "start": "pnpm run build && electron .",
+    "check-types": "tsc --noEmit",
+    "test": "vp test run",
+    "smoke": "node scripts/smoke.mjs",
+    "package": "pnpm run build && electron-builder --dir",
+    "make": "pnpm run build && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "@loadstone/application": "workspace:*",
+    "@loadstone/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "playwright-core": "1.61.1",
+    "proper-lockfile": "^4.1.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "vite-plus": "catalog:"
+  },
+  "build": {
+    "appId": "dev.loadstone.desktop",
+    "productName": "Loadstone",
+    "asar": true,
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
+    }
+  }
+}

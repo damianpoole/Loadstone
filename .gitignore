@@ -10,6 +10,7 @@ coverage
 dist
 build
 out
+release
 
 # Misc
 .DS_Store
