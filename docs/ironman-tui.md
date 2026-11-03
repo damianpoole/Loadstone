@@ -142,7 +142,15 @@ colour leaking into the rest of the interface.
   (wrapping at either end); **Enter** fills the prompt with the command and a space
   without executing it. Add any arguments, then press Enter again to run it.
   **Esc** dismisses the menu without cancelling active work. Editing the command
-  prefix reopens it; entering arguments or an unknown prefix hides it.
+  prefix reopens it; entering arguments or an unknown prefix hides it (except for
+  the session search described below).
+- **Session autocomplete:** type `/resume`, `/sessions`, or `/session` to browse
+  the active character's sessions. Add title words or an ID fragment to filter;
+  matching is case-insensitive and title words can be in any order. **↑ / ↓**
+  choose a result; **Enter switches directly**; **Esc** dismisses without switching
+  or cancelling agent work. Results show a short ID, creation date, and an active
+  marker to distinguish similar titles. Session changes still require idle/cancelled
+  agent work. Full `/resume SESSION_ID` commands remain supported.
 - **Enter:** send a message/command when the completion menu is closed. Paste text,
   then press Enter to send.
 - **Esc:** cancel the active agent run or manual RuneMetrics sync. Cancelling does
@@ -178,8 +186,8 @@ colour leaking into the rest of the interface.
 | `/set KIND KEY = JSON`                                               | Manually set/correct a fact                                                   |
 | `/forget KIND KEY`                                                   | Propose deletion; requires `/approve ID`                                      |
 | `/new`                                                               | New conversation, retaining character memory                                  |
-| `/sessions`                                                          | List the active character's sessions                                          |
-| `/resume SESSION_ID`                                                 | Open one of those sessions                                                    |
+| `/sessions [query]`, `/session [query]`                              | Search and switch the active character's sessions                             |
+| `/resume [title or ID]`                                              | Autocomplete a session; Enter switches to the selection                       |
 | `/earlier`                                                           | Load 50 older stored entries, including history before compaction             |
 | `/retry`                                                             | Retry parked crash-loop tasks, or send an explicit continuation after failure |
 | `/models [filter]`, `/model PROVIDER MODEL_ID`, `/model pi`, `/auth` | Model and authentication configuration                                        |
@@ -189,6 +197,24 @@ colour leaking into the rest of the interface.
 While the agent is working, read-only inspection is available, but new messages,
 manual edits, sync, and character/session changes require cancellation first. No
 hidden queue of messages can unexpectedly modify another character.
+
+### Session titles
+
+Sessions get a short, local title from the first successfully submitted request
+(up to 12 words / 80 characters). `/plan` requests become titles such as
+**Plan: unlock Invention**. Titles are stable across later turns and restarts;
+there is no extra model call or token cost for naming. The header shows the current
+title. Empty sessions appear as **Untitled session** in the picker.
+
+Existing databases are migrated automatically without changing session IDs or
+active selections. Old sessions remain searchable by ID and receive an opening-request
+title when first reopened, read from their oldest persisted entries rather than the
+current/compacted transcript. Titles live in the local memory database and are
+included in full backups, so treat them as private chat data.
+
+This borrows the friendly-name/first-message fallback concept from pi's bundled
+[`session-name` extension example](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/session-name.ts),
+without loading pi plugins or importing pi's session storage/UI.
 
 ### Outcome planning
 

@@ -40,9 +40,14 @@ export function ChatInput({
       if (key.return) {
         const command = completion.matches[completion.selected];
         if (command) {
-          const completed = `${command.name} `;
-          onChange(completed);
-          setPosition(completed.length);
+          const completed = command.value ?? `${command.name} `;
+          if (command.submit) {
+            onSubmit(completed);
+            setPosition(0);
+          } else {
+            onChange(completed);
+            setPosition(Array.from(completed).length);
+          }
         }
         return;
       }

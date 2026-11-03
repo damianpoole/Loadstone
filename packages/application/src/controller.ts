@@ -30,7 +30,7 @@ export const HELP = `Chat normally to ask for advice or report progress. Clear f
 /set KIND KEY = JSON — manually correct a fact, e.g. /set skill Herblore = 90
 /forget KIND KEY — propose deletion; /approve ID or /reject ID after reviewing
 /undo ID — undo a saved operation if no newer change affects its facts
-/new • /sessions • /resume SESSION_ID • /earlier • /retry
+/new • /sessions [query] • /session [query] • /resume [title or ID] • /earlier • /retry
 /model PROVIDER MODEL_ID • /model pi • /models [filter] • /auth
 /export — character JSON including history; /backup — all memory and sessions
 /quit — save and quit (unfinished agent work resumes on reopen)
@@ -43,6 +43,7 @@ export interface AppState {
   character?: Character;
   session?: ChatSession;
   facts: Fact[];
+  sessions?: ChatSession[];
   view: AgentView;
   notice: string;
   processing: boolean;
@@ -101,6 +102,7 @@ export class Controller {
     const id = this.state.character?.id;
     this.update({
       facts: id ? this.memory.facts(id) : [],
+      sessions: id ? this.memory.sessions(id) : [],
       pending: id ? this.memory.pending(id).length : 0,
     });
   }
@@ -153,7 +155,8 @@ export class Controller {
       models: (await this.getConnection()).models,
       onChange: (view) => {
         if (epoch === this.epoch && !this.closed) {
-          this.update({ view });
+          session = this.memory.sessions(character.id).find((s) => s.id === session.id)!;
+          this.update({ view, session });
           this.refresh();
         }
       },
@@ -253,13 +256,17 @@ export class Controller {
       });
       return;
     }
-    if (command === "/sessions") {
+    if (command === "/sessions" || command === "/session" || (command === "/resume" && !args)) {
       this.update({
         notice: id
           ? this.memory
               .sessions(id)
-              .map((s) => `${s.id} — ${new Date(s.createdAt).toLocaleString()}`)
-              .join("\n")
+              .filter((s) => `${s.title} ${s.id}`.toLowerCase().includes(args.toLowerCase()))
+              .map(
+                (s) =>
+                  `${s.title || "Untitled session"} — ${new Date(s.createdAt).toLocaleString()} — ${s.id}${s.id === this.state.session?.id ? " (active)" : ""}`,
+              )
+              .join("\n") || "No matching sessions. Use /new to start one."
           : "Select a character first.",
       });
       return;
@@ -304,7 +311,7 @@ export class Controller {
       if (!session) throw new Error("Session not found for this character. Use /sessions.");
       await this.activate(this.state.character, session);
       this.update({
-        notice: `Session ${session.id}. Character memory is shared across this character's sessions.`,
+        notice: `${session.title || "New session"}. Character memory is shared across this character's sessions.`,
       });
       return;
     }
@@ -313,8 +320,9 @@ export class Controller {
         throw new Error(
           "Usage: /plan TARGET (1–100 characters), e.g. /plan Prifddinas or /plan obtain an abyssal whip.",
         );
-      if (!this.companion) throw new Error("Session unavailable. Use /resume SESSION_ID.");
+      if (!this.companion) throw new Error("Session unavailable. Use /resume to choose a session.");
       await this.companion.send(`/plan ${args}`);
+      this.nameCurrentSession(`/plan ${args}`);
       this.update({
         notice:
           "Researching prerequisites against saved progress. Plans appear in /goals after saving; Esc cancels. Unknown progress stays unknown.",
@@ -328,7 +336,7 @@ export class Controller {
         : args.split(/\s+/);
       if (!provider || !modelId || extra)
         throw new Error("Usage: /model PROVIDER MODEL_ID or /model pi. Use /models to list.");
-      if (!this.companion) throw new Error("Session unavailable. Use /resume SESSION_ID.");
+      if (!this.companion) throw new Error("Session unavailable. Use /resume to choose a session.");
       await this.companion.setModel({ provider, modelId });
       this.memory.setSetting("provider", provider);
       this.memory.setSetting("model", modelId);
@@ -418,9 +426,18 @@ export class Controller {
       return;
     }
     if (input.startsWith("/")) throw new Error("Unknown command. Use /help.");
-    if (!this.companion) throw new Error("Session unavailable. Use /resume SESSION_ID.");
+    if (!this.companion) throw new Error("Session unavailable. Use /resume to choose a session.");
     await this.companion.send(input);
+    this.nameCurrentSession(input);
     this.update({ notice: "" });
+  }
+  private nameCurrentSession(message: string) {
+    const session = this.state.session;
+    if (!session) return;
+    this.memory.nameSession(session.characterId, session.id, message);
+    this.update({
+      session: this.memory.sessions(session.characterId).find((s) => s.id === session.id),
+    });
   }
   close(): Promise<void> {
     if (!this.closing)
