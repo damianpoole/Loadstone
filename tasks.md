@@ -7,6 +7,7 @@ Features and improvements planned to enhance the CLI for use with Ironman progre
 See [the desktop architecture and sequenced delivery plan](docs/desktop.md) for
 implementation details, acceptance criteria, packaging commands and release blockers.
 
+- [ ] **Slice 2 — graphical authentication and onboarding**: Implemented private OS-encrypted SDK credential storage, explicit shared-pi opt-in, offline first run, graphical API-key/browser/device/paste interactions, cancellation/timeout/logout and model/cost selection. Clean-Windows/live-provider acceptance and remaining typed-method/notice extraction still need validation/completion; see `docs/desktop.md`.
 - [x] **Slice 1 — shared runtime and desktop vertical slice**: Electron/React app, shared application controller, validated sandboxed IPC, character/memory display, sync, streamed durable chat and restart restoration; unsigned installer configuration and Windows/macOS/Linux CI with packaged/installed-app smoke tests.
 - [ ] **Slice 2 — onboarding/authentication**: Graphical provider login, private Loadstone credentials, explicit shared-pi consent, model discovery and structured non-terminal errors.
 - [ ] **Slice 3 — player UI/data controls**: Memory review/history/undo, sessions/goals, exports/backups, accessibility, chat polish and performance validation alongside RS3.

@@ -1,10 +1,19 @@
-import { app, BrowserWindow, dialog, ipcMain, session, type IpcMainInvokeEvent } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  session,
+  safeStorage,
+  shell,
+  type IpcMainInvokeEvent,
+} from "electron";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import lockfile from "proper-lockfile";
-import { Controller, DesktopService } from "@loadstone/application";
+import { Controller, DesktopService, DesktopAuth } from "@loadstone/application";
 import { channels } from "./protocol";
 import { contentSecurityPolicy, trustedFrame } from "./security";
 
@@ -15,6 +24,7 @@ if (process.platform === "linux" && (ozone === "x11" || ozone === "wayland"))
   app.commandLine.appendSwitch("ozone-platform", ozone);
 let startupStage = "Electron initialization";
 let controller: Controller | undefined;
+let authentication: DesktopAuth | undefined;
 let release: (() => Promise<void>) | undefined;
 let unsubscribe: (() => void) | undefined;
 let closing = false;
@@ -28,6 +38,7 @@ app.on("before-quit", (event) => {
   void (async () => {
     try {
       unsubscribe?.();
+      await authentication?.close();
       await controller?.close();
     } catch {
       console.error(
@@ -67,8 +78,30 @@ async function main() {
     },
   });
   startupStage = "character memory setup";
-  controller = new Controller(home);
-  const service = new DesktopService(controller);
+  const encryptionAvailable = () =>
+    safeStorage.isEncryptionAvailable() &&
+    (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text");
+  authentication = new DesktopAuth(
+    home,
+    {
+      encrypt: (value) => {
+        if (!encryptionAvailable())
+          throw new Error(
+            "OS credential encryption is unavailable. Unlock your keychain or choose shared pi login.",
+          );
+        return safeStorage.encryptString(value);
+      },
+      decrypt: (value) => {
+        if (!encryptionAvailable()) throw new Error("OS credential encryption is unavailable.");
+        return safeStorage.decryptString(value);
+      },
+    },
+    (url) => shell.openExternal(url),
+  );
+  await authentication.initialize();
+  const auth = authentication;
+  controller = new Controller(home, undefined, () => auth.connection(), true);
+  const service = new DesktopService(controller, auth);
   controller.state = {
     ...controller.state,
     notice:

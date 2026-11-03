@@ -17,7 +17,7 @@ function App() {
   const [name, setName] = useState("");
   const [draft, setDraft] = useState("");
   const [provider, setProvider] = useState("");
-  const [modelId, setModelId] = useState("");
+  const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const chat = useRef<HTMLElement>(null);
   const follow = useRef(true);
@@ -39,6 +39,9 @@ function App() {
       unsubscribe();
     };
   }, []);
+  useEffect(() => {
+    setAnswer("");
+  }, [state?.connection?.prompt?.id]);
   useEffect(() => {
     if (follow.current && chat.current) chat.current.scrollTop = chat.current.scrollHeight;
   }, [state?.view]);
@@ -63,6 +66,7 @@ function App() {
       </main>
     );
   const busy = state.processing || state.view.busy || submitting;
+  const connection = state.connection;
   return (
     <main className="layout">
       <aside>
@@ -120,36 +124,162 @@ function App() {
             New conversation
           </button>
         </div>
-        <details>
-          <summary>Connection settings</summary>
+        <details open>
+          <summary>Connect AI / first-run setup</summary>
           <p>
-            This preview reuses existing pi credentials or provider environment keys. Guided login
-            comes next.
+            Create your Ironman above, sync RuneMetrics, then connect AI to chat. You can also
+            continue without AI.
           </p>
-          <button disabled={busy} onClick={() => void request({ type: "auth" })}>
-            Show credential status
-          </button>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void request({ type: "model", provider, modelId });
-            }}
-          >
-            <label htmlFor="provider">Provider</label>
-            <input
-              id="provider"
-              value={provider}
-              onChange={(event) => setProvider(event.target.value)}
-              placeholder="openai"
-            />
-            <label htmlFor="model">Model ID</label>
-            <input
-              id="model"
-              value={modelId}
-              onChange={(event) => setModelId(event.target.value)}
-            />
-            <button disabled={busy || !state.character || !provider || !modelId}>Use model</button>
-          </form>
+          <p>
+            Private credentials are encrypted for your OS account. Shared pi login reads and may
+            refresh/write pi’s original credential file. Disconnect removes credentials from the
+            selected store, not your provider account.
+          </p>
+          <label>
+            Credential storage
+            <select
+              aria-label="Credential storage"
+              value={connection?.mode ?? "offline"}
+              disabled={busy || connection?.busy}
+              onChange={(event) =>
+                void request({
+                  type: "connection",
+                  mode: event.target.value as "private" | "shared" | "offline",
+                })
+              }
+            >
+              <option value="offline">Continue without AI</option>
+              <option value="private">Private Loadstone credentials (recommended)</option>
+              <option value="shared">Use shared pi login (allows refresh writes)</option>
+            </select>
+          </label>
+          <p role="status">{connection?.message}</p>
+          {connection?.mode !== "offline" && (
+            <>
+              <label>
+                Provider
+                <select
+                  aria-label="Provider"
+                  value={provider}
+                  disabled={busy || connection?.busy}
+                  onChange={(event) => setProvider(event.target.value)}
+                >
+                  <option value="">Choose a provider</option>
+                  {connection?.providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.connected ? " · connected" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p>
+                Use an account authorized for this application. Browser login availability does not
+                guarantee subscription eligibility. API usage may incur charges.
+              </p>
+              <div className="actions">
+                <button
+                  disabled={
+                    busy ||
+                    connection?.busy ||
+                    !connection?.providers.find((p) => p.id === provider)?.apiKey
+                  }
+                  onClick={() => void request({ type: "login", provider, method: "api_key" })}
+                >
+                  Connect API key
+                </button>
+                <button
+                  disabled={
+                    busy ||
+                    connection?.busy ||
+                    !connection?.providers.find((p) => p.id === provider)?.oauth
+                  }
+                  onClick={() => void request({ type: "login", provider, method: "oauth" })}
+                >
+                  Browser login
+                </button>
+                <button
+                  disabled={
+                    busy ||
+                    connection?.busy ||
+                    !connection?.providers.find((p) => p.id === provider)?.connected
+                  }
+                  onClick={() => void request({ type: "logout", provider })}
+                >
+                  Disconnect
+                </button>
+              </div>
+              {connection?.link && (
+                <p className="login-link">Login URL (if browser did not open): {connection.link}</p>
+              )}
+              {connection?.prompt && (
+                <form
+                  key={connection.prompt.id}
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const value = answer;
+                    setAnswer("");
+                    void request({ type: "answerLogin", id: connection.prompt!.id, value });
+                  }}
+                >
+                  <label htmlFor="login-answer">{connection.prompt.message}</label>
+                  {connection.prompt.options ? (
+                    <select
+                      id="login-answer"
+                      value={answer}
+                      onChange={(event) => setAnswer(event.target.value)}
+                    >
+                      <option value="">Choose…</option>
+                      {connection.prompt.options.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="login-answer"
+                      type="password"
+                      autoComplete="off"
+                      value={answer}
+                      onChange={(event) => setAnswer(event.target.value)}
+                      maxLength={16000}
+                    />
+                  )}
+                  <button disabled={!answer}>Continue login</button>
+                </form>
+              )}
+              {connection?.busy && (
+                <button onClick={() => void request({ type: "cancelLogin" })}>Cancel login</button>
+              )}
+              <label>
+                Account-compatible model
+                <select
+                  aria-label="Account-compatible model"
+                  value={
+                    state.view.model
+                      ? `${state.view.model.provider}/${state.view.model.modelId}`
+                      : ""
+                  }
+                  disabled={busy || connection?.busy || !state.character}
+                  onChange={(event) => {
+                    const model = connection?.models.find(
+                      (m) => `${m.provider}/${m.id}` === event.target.value,
+                    );
+                    if (model)
+                      void request({ type: "model", provider: model.provider, modelId: model.id });
+                  }}
+                >
+                  <option value="">Choose a model after opening a character</option>
+                  {connection?.models.map((m) => (
+                    <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+                      {m.provider} / {m.name} · ${m.input} in / ${m.output} out per 1M tokens
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
         </details>
         <details open>
           <summary>Saved memory ({state.facts.length})</summary>
