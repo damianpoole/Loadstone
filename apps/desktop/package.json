@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Local-first RuneScape Ironman companion",
+  "homepage": "https://github.com/damianpoole/Loadstone",
   "license": "UNLICENSED",
   "author": "Loadstone contributors",
   "type": "module",
