@@ -14,6 +14,46 @@ export interface SearchResult {
 
 const BASE_URL = "https://runescape.wiki/api.php";
 
+// Wire-format contracts, not runtime validation. API failures are handled by
+// each caller; validate unknown data before adding new externally supplied fields.
+interface WikiSearchResponse {
+  query?: { search?: { title: string; snippet?: string }[] };
+}
+interface WikiParseResponse {
+  error?: unknown;
+  parse: {
+    title: string;
+    pageid?: number;
+    revid?: number;
+    text: { "*": string };
+    [key: string]: unknown;
+  };
+}
+interface WikiCategoryResponse {
+  query?: { categorymembers?: { title: string }[] };
+}
+export interface WikiPage {
+  title: string;
+  pageid?: number;
+  revid?: number;
+  extract: string;
+  [key: string]: unknown;
+}
+interface RuneMetricsProfileResponse {
+  error?: unknown;
+  name: string;
+  combatlevel: number;
+  totalskill: number;
+  totalxp: number;
+  questscomplete: number;
+  questsstarted: number;
+  questsnotstarted: number;
+  skillvalues: { id: number; level: number }[];
+}
+interface RuneMetricsQuestsResponse {
+  quests?: RSProfile["quests"];
+}
+
 /**
  * Searches the RuneScape 3 Wiki for a given term.
  * @param query The search term.
@@ -31,17 +71,14 @@ export async function searchWiki(
   url.searchParams.append("format", "json");
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await fetchJsonWithCache<any>(url.toString(), {
+    const data = await fetchJsonWithCache<WikiSearchResponse>(url.toString(), {
       cache: options.cache,
       fetchOptions: { signal: options.signal },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results = data.query?.search || [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return results.map((result: any) => ({
+    return results.map((result) => ({
       title: result.title,
       // Snippet contains HTML highlighting, we strip it roughly for display
       snippet: result.snippet?.replace(/<[^>]+>/g, ""),
@@ -62,7 +99,7 @@ export async function searchWiki(
 export async function getPage(
   title: string,
   options: { json?: boolean; section?: string; cache?: CacheOptions; signal?: AbortSignal } = {},
-): Promise<string | object | null> {
+): Promise<string | WikiPage | null> {
   const url = new URL(BASE_URL);
   url.searchParams.append("action", "parse");
   url.searchParams.append("format", "json");
@@ -71,8 +108,7 @@ export async function getPage(
   url.searchParams.append("redirects", "1");
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await fetchJsonWithCache<any>(url.toString(), {
+    const data = await fetchJsonWithCache<WikiParseResponse>(url.toString(), {
       cache: options.cache,
       fetchOptions: { signal: options.signal },
     });
@@ -269,16 +305,14 @@ export async function getCategoryMembers(
   url.searchParams.append("cmlimit", (options.limit || 50).toString());
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = await fetchJsonWithCache<any>(url.toString(), {
+    const data = await fetchJsonWithCache<WikiCategoryResponse>(url.toString(), {
       cache: options.cache,
       fetchOptions: { signal: options.signal },
     });
 
     const members = data.query?.categorymembers || [];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return members.map((member: any) => member.title);
+    return members.map((member) => member.title);
   } catch (error) {
     console.error("Failed to fetch category members:", error);
 
@@ -341,7 +375,7 @@ export interface RSProfile {
     questPoints: number;
     members: boolean;
   }[];
-  raw?: any;
+  raw?: unknown;
 }
 
 /**
@@ -359,21 +393,19 @@ export async function getRSProfile(
 
   try {
     const [profileResult, questsResult] = await Promise.allSettled([
-      fetchJsonWithCache<any>(profileUrl, { cache: options.cache }),
-      fetchJsonWithCache<any>(questsUrl, { cache: options.cache }),
+      fetchJsonWithCache<RuneMetricsProfileResponse>(profileUrl, { cache: options.cache }),
+      fetchJsonWithCache<RuneMetricsQuestsResponse>(questsUrl, { cache: options.cache }),
     ]);
 
     if (profileResult.status === "rejected") {
       throw profileResult.reason;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const profileData = profileResult.value as any;
+    const profileData = profileResult.value;
 
     if (profileData.error) return null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let questsData: any = { quests: [] };
+    let questsData: RuneMetricsQuestsResponse = { quests: [] };
 
     if (questsResult.status === "fulfilled") {
       questsData = questsResult.value;
@@ -381,8 +413,7 @@ export async function getRSProfile(
 
     const skills: Record<string, number> = {};
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    profileData.skillvalues.forEach((sv: any) => {
+    profileData.skillvalues.forEach((sv) => {
       const name = SKILL_NAMES[sv.id] || `Unknown(${sv.id})`;
       skills[name] = sv.level;
     });
@@ -396,8 +427,7 @@ export async function getRSProfile(
       questsStarted: profileData.questsstarted,
       questsNotStarted: profileData.questsnotstarted,
       skills,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      quests: (questsData.quests || []).map((q: any) => ({
+      quests: (questsData.quests || []).map((q) => ({
         title: q.title,
         status: q.status,
         questPoints: q.questPoints,

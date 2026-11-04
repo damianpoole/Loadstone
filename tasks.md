@@ -2,6 +2,10 @@
 
 Features and improvements planned to enhance the CLI for use with Ironman progress LLM agents.
 
+## Repository Quality
+
+- [x] **Enforced quality baseline**: Explicit lint rules for type escapes and common mistakes, no lint warnings/unused suppressions, TypeScript unused-code checks, shared `pnpm run check` entry point for local/mise/CI, typed legacy fixtures and contributor/PR review checklists.
+
 ## Desktop Companion
 
 See [the desktop architecture and sequenced delivery plan](docs/desktop.md) for

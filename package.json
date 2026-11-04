@@ -2,6 +2,7 @@
   "name": "loadstone",
   "private": true,
   "scripts": {
+    "check": "pnpm run check-types && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run build",
     "build": "vp run -r build",
     "dev": "pnpm --filter loadstone-rs3 dev",
     "start": "pnpm --filter loadstone-rs3 start",
@@ -11,7 +12,7 @@
     "desktop:package": "pnpm --filter loadstone-desktop package",
     "desktop:make": "pnpm --filter loadstone-desktop make",
     "desktop:smoke": "pnpm --filter loadstone-desktop smoke",
-    "lint": "vp lint",
+    "lint": "vp lint --deny-warnings --report-unused-disable-directives-severity error",
     "check-types": "pnpm -r check-types",
     "test": "vp run -r test",
     "test:watch": "pnpm -r --parallel test:watch",

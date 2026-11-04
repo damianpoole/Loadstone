@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vite-plus/test";
 import { page } from "./page";
 import * as wikiClient from "@loadstone/wiki-client";
 
@@ -14,170 +14,95 @@ vi.mock("chalk", () => {
   return { default: mockChalk };
 });
 
+const mockPage = {
+  title: "Abyssal whip",
+  pageid: 12345,
+  revid: 67890,
+  extract:
+    '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p><h2>Drop sources</h2><p>Drops</p></div>',
+} satisfies wikiClient.WikiPage;
+
 describe("page command", () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>;
+  let consoleSpy: MockInstance<typeof console.log>;
 
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(wikiClient.getPage).mockResolvedValue(mockPage);
+    vi.mocked(wikiClient.parseWikiContent).mockReturnValue({
+      Stats: "Content",
+      "Drop sources": "Drops",
+    });
   });
 
   afterEach(() => {
+    vi.resetAllMocks();
     vi.restoreAllMocks();
   });
 
-  it("should display page content in text mode", async () => {
-    const mockData = {
-      title: "Abyssal whip",
-      pageid: 12345,
-      revid: 67890,
-      extract: '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
-    };
-
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
-    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
-      Stats: "Content",
-    });
-
+  it("displays page content in text mode", async () => {
     await page("Abyssal whip", {});
-
     expect(wikiClient.getPage).toHaveBeenCalledWith("Abyssal whip", {
       json: true,
       section: undefined,
       cache: {},
     });
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(wikiClient.parseWikiContent).toHaveBeenCalledWith(mockPage.extract);
+    expect(consoleSpy).toHaveBeenCalledWith("Content");
+    expect(consoleSpy).toHaveBeenCalledWith("Drops");
   });
 
-  it("should output JSON when json option is true", async () => {
-    const mockData = {
+  it.each([
+    { options: {}, sections: { Stats: "Content", "Drop sources": "Drops" } },
+    { options: { headings: true }, sections: ["Stats", "Drop sources"] },
+    { options: { fields: "Drop sources" }, sections: { "Drop sources": "Drops" } },
+    { options: { headings: true, section: "Drop" }, sections: ["Drop sources"] },
+    { options: { section: "missing" }, sections: {} },
+  ])("outputs structured JSON for $options", async ({ options, sections }) => {
+    await page("Abyssal whip", { ...options, json: true });
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(consoleSpy.mock.calls[0][0]))).toEqual({
       title: "Abyssal whip",
-      pageid: 12345,
-      revid: 67890,
-      extract: '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p></div>',
-    };
-
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
-    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
-      Stats: "Content",
+      pageId: 12345,
+      url: "https://runescape.wiki/w/Abyssal_whip",
+      lastModified: 67890,
+      sections,
     });
-
-    await page("Abyssal whip", { json: true });
-
-    const output = consoleSpy.mock.calls.flat().join(" ");
-    expect(output).toContain('"title"');
-    expect(output).toContain('"Abyssal whip"');
   });
 
-  it("should output only headings when headings option is true", async () => {
-    const mockData = {
-      title: "Abyssal whip",
-      pageid: 12345,
-      revid: 67890,
-      extract:
-        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p><h2>Drop sources</h2><p>Drops</p></div>',
-    };
-
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
-    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
-      Stats: "Content",
-      "Drop sources": "Drops",
-    });
-
-    await page("Abyssal whip", { json: true, headings: true });
-
-    const output = consoleSpy.mock.calls.flat().join(" ");
-    expect(output).toContain('"sections"');
-    expect(output).toContain('"Stats"');
-    expect(output).toContain('"Drop sources"');
-  });
-
-  it("should filter JSON sections when fields option is provided", async () => {
-    const mockData = {
-      title: "Abyssal whip",
-      pageid: 12345,
-      revid: 67890,
-      extract:
-        '<div class="mw-parser-output"><h2>Stats</h2><p>Content</p><h2>Drop sources</h2><p>Drops</p></div>',
-    };
-
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
-    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
-      Stats: "Content",
-      "Drop sources": "Drops",
-    });
-
-    await page("Abyssal whip", { json: true, fields: "Drop sources" });
-
-    const output = consoleSpy.mock.calls.flat().join(" ");
-    expect(output).toContain('"title"');
-    expect(output).toContain('"sections"');
-    expect(output).toContain('"Drop sources"');
-    expect(output).not.toContain('"Stats"');
-  });
-
-  it("should filter headings by section in JSON mode", async () => {
-    const mockData = {
-      title: "Test Page",
-      pageid: 12345,
-      revid: 67890,
-      extract:
-        '<div class="mw-parser-output"><h2>Drop sources</h2><p>Drops</p><h2>Stats</h2><p>Stats</p></div>',
-    };
-
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
-    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
-      "Drop sources": "Drops",
-      Stats: "Stats",
-    });
-
-    await page("Test Page", { json: true, headings: true, section: "Drop" });
-
-    const output = consoleSpy.mock.calls.flat().join(" ");
-    expect(output).toContain('"Drop sources"');
-    expect(output).not.toContain('"Stats"');
-  });
-
-  it("should filter sections when section option is provided", async () => {
-    const mockData = {
-      title: "Test Page",
-      pageid: 12345,
-      revid: 67890,
-      extract:
-        '<div class="mw-parser-output"><h2>Drop sources</h2><p>Drops</p><h2>Stats</h2><p>Stats</p></div>',
-    };
-
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(mockData as any);
-    vi.mocked(wikiClient.parseWikiContent).mockReturnValueOnce({
-      "Drop sources": "Drops",
-      Stats: "Stats",
-    });
-
-    await page("Test Page", { section: "Drop" });
-
-    expect(wikiClient.getPage).toHaveBeenCalledWith("Test Page", {
+  it("filters sections in text mode", async () => {
+    await page("Abyssal whip", { section: "Drop" });
+    expect(wikiClient.getPage).toHaveBeenCalledWith("Abyssal whip", {
       json: true,
       section: "Drop",
       cache: {},
     });
+    expect(consoleSpy).toHaveBeenCalledWith("Drops");
+    expect(consoleSpy).not.toHaveBeenCalledWith("Content");
   });
 
-  it("should handle page not found", async () => {
+  it("reports unavailable sections in text mode", async () => {
+    await page("Abyssal whip", { section: "missing" });
+    expect(consoleSpy).toHaveBeenCalledWith("Section 'missing' not found.");
+  });
+
+  it("handles a missing page in text mode", async () => {
     vi.mocked(wikiClient.getPage).mockResolvedValueOnce(null);
-
     await page("NonExistentPage", {});
-
-    const output = consoleSpy.mock.calls.flat().join(" ");
-    expect(output).toContain("Page not found");
+    expect(consoleSpy).toHaveBeenCalledWith("Page not found.");
   });
 
-  it("should handle error response", async () => {
-    vi.mocked(wikiClient.getPage).mockResolvedValueOnce({
-      error: "missingtitle",
-    } as any);
+  it("rejects an unexpected text response instead of treating it as metadata", async () => {
+    vi.mocked(wikiClient.getPage).mockResolvedValueOnce("unexpected text");
+    await page("Abyssal whip", { json: true });
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(consoleSpy.mock.calls[0][0]))).toEqual({ error: "Page not found" });
+    expect(wikiClient.parseWikiContent).not.toHaveBeenCalled();
+  });
 
-    await page("NonExistentPage", {});
-
-    const output = consoleSpy.mock.calls.flat().join(" ");
-    expect(output).toContain("Page not found");
+  it("returns only an error object for a missing page in JSON mode", async () => {
+    vi.mocked(wikiClient.getPage).mockResolvedValueOnce(null);
+    await page("NonExistentPage", { json: true });
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(consoleSpy.mock.calls[0][0]))).toEqual({ error: "Page not found" });
   });
 });

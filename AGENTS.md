@@ -62,7 +62,10 @@ When adding dependencies:
 - **Strict mode enabled**: All TypeScript code must be type-safe
 - **Module system**: ESNext modules with bundler resolution
 - **Base config**: Extend from `@loadstone/tsconfig/base.json`
-- **No `any` types**: Use `eslint-disable-next-line @typescript-eslint/no-explicit-any` only when absolutely necessary (e.g., external API responses)
+- **No explicit `any`**: Enforced by lint in source and tests. Use `unknown` with validation at untrusted boundaries and concrete types/typed mocks for known contracts.
+- **No unused declarations/parameters**: Enforced by TypeScript. Prefix only intentionally unused callback parameters with `_`.
+- **Suppressions**: Keep necessary `oxlint-disable-next-line` directives narrow and explain why; unused directives fail lint. Do not bypass errors with casts. `@ts-ignore`/`@ts-nocheck` are forbidden; `@ts-expect-error` requires a description.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for the enforced baseline and human review standard.
 
 ### 4. Command Implementation Pattern
 
@@ -315,7 +318,10 @@ cd apps/cli
 
 ### Testing Changes
 
-**⚠️ CRITICAL: All changes MUST pass tests and type checking before completion.**
+**⚠️ CRITICAL: Run `pnpm run check` from the root before completion.**
+This runs type checking, linting, formatting checks, tests and production builds;
+`mise run check` delegates to the same command used by CI. Run relevant desktop
+smoke/manual acceptance checks separately. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 1. **Type checking**: `pnpm run check-types` from the root (separate from tests)
 2. **Unit tests**: `pnpm run test` (from root, runs via Vite Plus)
@@ -327,7 +333,9 @@ cd apps/cli
 
 - ✅ All tests must pass: `pnpm run test`
 - ✅ TypeScript must compile without errors: `pnpm run check-types` (separate from tests)
-- ✅ No linting errors: `pnpm run lint`
+- ✅ No linting errors or warnings: `pnpm run lint`
+- ✅ Formatting matches: `pnpm run format:check`
+- ✅ Production builds succeed: `pnpm run build`
 - ✅ All new code must have corresponding tests
 
 ## Common Patterns
@@ -462,7 +470,10 @@ Before completing any changes, ensure:
 
 - [ ] All tests pass: `pnpm run test`
 - [ ] TypeScript compiles: `pnpm run check-types` (separate from tests)
-- [ ] Linting passes: `pnpm run lint`
+- [ ] Linting passes without warnings or unused suppressions: `pnpm run lint`
+- [ ] Formatting passes: `pnpm run format:check`
+- [ ] Production builds pass: `pnpm run build`
+- [ ] PR follows the scope, design, error-handling and evidence checklist in `CONTRIBUTING.md`
 - [ ] New code has corresponding tests
 - [ ] Tests cover edge cases and error handling
 - [ ] Code follows existing patterns and conventions

@@ -205,9 +205,12 @@ loadstone page "Abyssal whip" --no-cache
 
 ## Development
 
-This project uses pnpm workspaces and [Vite Plus](https://viteplus.dev/) for task execution, packaging, tests, linting, and formatting. Run `mise run check` for type checking, linting, tests, and a production build.
+This project uses pnpm workspaces and [Vite Plus](https://viteplus.dev/) for task execution, packaging, tests, linting, and formatting. Run `pnpm run check` (or `mise run check`) for type checking, linting, formatting checks, tests, and production builds—the same baseline CI runs. See [CONTRIBUTING.md](CONTRIBUTING.md) for enforced rules and the PR review standard.
 
 ```bash
+# Full local/CI quality baseline
+pnpm run check
+
 # Rebuild the CLI on source changes (run dist/index.js separately)
 pnpm run dev
 
