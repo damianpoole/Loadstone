@@ -5,7 +5,7 @@ import os from "node:os";
 import { searchWiki, getPage, getCategoryMembers, getRSProfile } from "./index";
 
 // Mock fetch globally
-global.fetch = vi.fn() as unknown as typeof fetch;
+global.fetch = vi.fn<typeof fetch>();
 
 let tempCacheDir: string | undefined;
 let previousCacheDir: string | undefined;
@@ -77,10 +77,7 @@ describe("searchWiki", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const results = await searchWiki("abyssal");
 
@@ -92,10 +89,9 @@ describe("searchWiki", () => {
   });
 
   it("should handle API errors gracefully", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      statusText: "Not Found",
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(null, { status: 404, statusText: "Not Found" }),
+    );
 
     const results = await searchWiki("test");
 
@@ -103,7 +99,7 @@ describe("searchWiki", () => {
   });
 
   it("should handle network errors", async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error("Network error"));
+    vi.mocked(global.fetch).mockRejectedValueOnce(new Error("Network error"));
 
     const results = await searchWiki("test");
 
@@ -122,10 +118,7 @@ describe("searchWiki", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const results = await searchWiki("test");
 
@@ -155,16 +148,14 @@ describe("getPage", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const result = await getPage("Abyssal whip", { json: true });
 
-    expect(result).toBeDefined();
-    expect((result as any).title).toBe("Abyssal whip");
-    expect((result as any).extract).toContain("Stats");
+    expect(result).toMatchObject({
+      title: "Abyssal whip",
+      extract: expect.stringContaining("Stats"),
+    });
   });
 
   it("should return parsed text in non-JSON mode", async () => {
@@ -177,10 +168,7 @@ describe("getPage", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const result = await getPage("Test Page", { json: false });
 
@@ -199,10 +187,7 @@ describe("getPage", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const result = await getPage("Test Page", { json: false, section: "Drop" });
 
@@ -219,10 +204,7 @@ describe("getPage", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const result = await getPage("NonExistentPage", {});
 
@@ -230,10 +212,9 @@ describe("getPage", () => {
   });
 
   it("should handle API errors", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      statusText: "Server Error",
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(null, { status: 500, statusText: "Server Error" }),
+    );
 
     const result = await getPage("Test", {});
 
@@ -258,10 +239,7 @@ describe("getCategoryMembers", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     const members = await getCategoryMembers("Novice quests");
 
@@ -278,14 +256,11 @@ describe("getCategoryMembers", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     await getCategoryMembers("Novice quests");
 
-    const fetchCall = (global.fetch as any).mock.calls[0][0];
+    const fetchCall = vi.mocked(global.fetch).mock.calls[0][0];
     // Check that Category: prefix is added (URL encoded - space becomes + or %20)
     expect(fetchCall).toMatch(/Category%3ANovice[\s+%20]quests/);
   });
@@ -297,22 +272,18 @@ describe("getCategoryMembers", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(Response.json(mockResponse));
 
     await getCategoryMembers("Test", { limit: 10 });
 
-    const fetchCall = (global.fetch as any).mock.calls[0][0];
+    const fetchCall = vi.mocked(global.fetch).mock.calls[0][0];
     expect(fetchCall).toContain("cmlimit=10");
   });
 
   it("should handle API errors gracefully", async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: false,
-      statusText: "Not Found",
-    });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(null, { status: 404, statusText: "Not Found" }),
+    );
 
     const members = await getCategoryMembers("Test");
 
@@ -320,7 +291,7 @@ describe("getCategoryMembers", () => {
   });
 
   it("should handle network errors", async () => {
-    (global.fetch as any).mockRejectedValueOnce(new Error("Network error"));
+    vi.mocked(global.fetch).mockRejectedValueOnce(new Error("Network error"));
 
     const members = await getCategoryMembers("Test");
 
@@ -476,10 +447,7 @@ describe("cache behavior", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockImplementation(async () => Response.json(mockResponse));
 
     const first = await searchWiki("abyssal", { cache: { enabled: true } });
     const second = await searchWiki("abyssal", { cache: { enabled: true } });
@@ -501,10 +469,7 @@ describe("cache behavior", () => {
       },
     };
 
-    (global.fetch as any).mockResolvedValue({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    vi.mocked(global.fetch).mockImplementation(async () => Response.json(mockResponse));
 
     await searchWiki("abyssal", { cache: { enabled: false } });
     await searchWiki("abyssal", { cache: { enabled: false } });
