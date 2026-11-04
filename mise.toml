@@ -6,4 +6,4 @@ node = "24.19.0"
 run = "pnpm install --frozen-lockfile"
 
 [tasks.check]
-run = "pnpm run check-types && pnpm run lint && pnpm run test && pnpm run build"
+run = "pnpm run check"

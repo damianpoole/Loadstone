@@ -16,14 +16,13 @@ export async function page(
   }
   const cacheOptions = buildCacheOptions(options);
   // We always ask for JSON=true from the client to get the full metadata object
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = (await getPage(title, {
+  const data = await getPage(title, {
     json: true,
     section: options.section,
     cache: cacheOptions,
-  })) as any;
+  });
 
-  if (!data || data.error) {
+  if (!data || typeof data === "string" || data.error) {
     if (options.json) {
       console.log(JSON.stringify({ error: "Page not found" }, null, 2));
     } else {
