@@ -10,6 +10,10 @@ catalog:
 overrides:
   vite@*: "catalog:"
   vitest@*: "catalog:"
+  # Security fixes for transitive dependencies; retain unaffected major versions.
+  esbuild@>=0.27.3 <0.28.1: 0.28.2
+  minimatch@>=7.0.0 <11.0.1: 11.0.1
+  undici@>=8.0.0 <8.12.2: 8.12.4
 peerDependencyRules:
   allowAny:
     - vite
