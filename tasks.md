@@ -60,6 +60,7 @@ backend overrides and a documented sandbox troubleshooting path.
 - [x] **Tool Paths**: Provision Node.js and pnpm through mise and document pnpm's global bin setup.
 - [x] **Binary Distribution**: Set up a build step to produce a single-file executable for easier installation.
 - [x] **Dependency Security**: Upgrade to Vitest 5; Vite Plus now manages the test and packaging dependencies, replacing tsup and its esbuild override.
+- [x] **Dependabot remediation**: Apply version-scoped transitive overrides for patched esbuild, minimatch and undici releases; regenerate the pnpm lockfile and verify with the full quality check and dependency audit.
 
 - [x] **Codex Skill Setup**: Document mise/pnpm-based local installation and Codex skill installation; correct headings examples and explain fresh profile queries and quest-data limitations.
 
