@@ -345,7 +345,9 @@ export class DesktopAuth {
       });
       void this.browser(link).catch(() =>
         this.update({
-          message: "Browser could not open. Use the displayed login link in your browser.",
+          message:
+            "Browser could not open. Use the displayed login link in your browser." +
+            (event.type === "device_code" ? ` Enter device code: ${event.userCode}` : ""),
         }),
       );
     }

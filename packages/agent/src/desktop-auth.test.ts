@@ -185,6 +185,33 @@ describe("private desktop credentials", () => {
     expect(JSON.stringify(auth.state)).not.toContain("private-callback");
     expect(auth.state.link).toBeUndefined();
   });
+  it("keeps the device code available when the system browser cannot open", async () => {
+    const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+    const browser = vi.fn().mockRejectedValue(new Error("No browser available"));
+    const auth = new DesktopAuth(await home(), codec, browser);
+    await auth.choose("private");
+    vi.spyOn(ModelRuntime.prototype, "login").mockImplementation(
+      async (_provider, _method, interaction) => {
+        interaction.notify({
+          type: "device_code",
+          userCode: "ABCD-EFGH",
+          verificationUri: "https://auth.openai.com/device",
+        });
+        await interaction.prompt({ type: "manual_code", message: "Complete sign-in" });
+        throw new Error("Test login does not issue credentials");
+      },
+    );
+    const login = auth.login("openai", "oauth");
+    try {
+      await vi.waitFor(() => expect(auth.state.message).toContain("Browser could not open"));
+      expect(auth.state.message).toContain("ABCD-EFGH");
+      expect(auth.state.link).toBe("https://auth.openai.com/device");
+      expect(auth.state.busy).toBe(true);
+    } finally {
+      auth.cancel();
+      await login;
+    }
+  });
   it("blocks durable model transport while offline or disconnected", async () => {
     const auth = new DesktopAuth(await home(), codec, vi.fn());
     await auth.initialize();
