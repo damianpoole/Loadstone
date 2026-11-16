@@ -18,8 +18,11 @@ The first slice establishes the runtime and packaging boundary:
 - Unsigned Windows NSIS, macOS DMG/ZIP and Linux DEB/AppImage packaging and CI artifacts.
 - Deterministic durable-chat integration tests and real Electron/package smoke tests.
 
-**Not included:** graphical provider login, a Loadstone-owned credential store,
-review/undo controls, a session browser, production signing/notarization, automatic
+Slice 2 adds graphical provider connection, an encrypted Loadstone-owned credential
+store, explicit shared-pi opt-in, offline onboarding and account-scoped model selection.
+The pinned pi SDK remains at 1.4.0; no SDK upgrade or hand-written OAuth is involved.
+
+**Not included:** review/undo controls, a session browser, production signing/notarization, automatic
 updates, migration backups, branding/icons, or public downloads. Native Wayland,
 AppImage runtime behavior and distribution coverage beyond the Linux CI runner
 still need manual validation.
@@ -64,22 +67,52 @@ pnpm run desktop
 
 ### Authentication in this slice
 
-The preview retains the existing connection behavior: it can reuse pi's auth store
-and defaults, or use provider environment credentials. It does **not** require an
-installed pi executable when credentials are already available or an environment
-key is used. It does not yet offer a graphical login flow.
+First launch defaults to **Continue without AI**. Create/open an Ironman and sync
+RuneMetrics without credentials, or choose a credential store in **Connect AI**:
 
-For example, set `LOADSTONE_AUTH=env`, `OPENAI_API_KEY`, and optionally
-`LOADSTONE_PROVIDER` / `LOADSTONE_MODEL` in the launching shell. Anthropic and
-OpenRouter environment keys are also supported; select the corresponding model.
-Do not paste a key into chat. Environment variables inherited from a shell may not
-be present when launching from Finder/Explorer. This is an intentional preview
-limitation, not the planned player onboarding experience.
+- **Private Loadstone credentials (recommended):** SDK login writes to
+  `credentials.enc` under the character data directory. Electron `safeStorage`
+  encrypts the entire store with the OS account's credential protection. Windows
+  uses DPAPI; macOS uses Keychain; Linux requires a supported secret service.
+  Linux's `basic_text` fallback is rejected, not treated as encryption. There is
+  no plaintext fallback. Unlock OS credential storage if saving fails.
+- **Shared pi login:** explicit consent to read and potentially refresh/write pi's
+  original `auth.json`. Tokens are not copied. SDK file-store locking and refresh
+  remain authoritative. Disconnect here removes that provider from pi too.
+- **Continue without AI:** prevents chat and durable recovery from sending model
+  requests, including through inherited environment keys. It does not erase saved
+  credentials; reconnect by choosing their store again.
 
-Connection settings can display credential **metadata only** and set a provider /
-model ID. Invalid authentication does not submit a chat, and the desktop preserves
-the draft on submission errors. Memory and RuneMetrics sync work without AI auth.
-See [the existing authentication guide](ironman-tui.md) for current variables.
+Choose a provider, then **Connect API key** or **Browser login** where the pinned
+SDK supports it. API keys, select prompts, device codes and manual callback/code
+fallback use dedicated login controls, never chat. Only SDK-issued HTTPS URLs
+open in the system browser; the renderer cannot request arbitrary external URLs.
+Cancel login at any time; flows time out after five minutes. Restart restores the
+selected store, not an unfinished login. Failed/revoked authentication preserves
+the chat draft; reconnect through these same controls.
+
+The initial supported provider surface is OpenAI, Anthropic, OpenRouter and GitHub
+Copilot, restricted to methods actually exposed by the pinned SDK. Models are
+listed only for providers with credentials in the selected store. This is a
+catalog/account-auth filter, **not a guarantee of account entitlement**; the
+provider may reject an individual model. Displayed input/output prices are SDK
+catalog estimates per million tokens, not a billing quote. No subscription
+compatibility is advertised or guaranteed; confirm provider terms independently.
+
+The SDK's public `CredentialStore.modify` callback serializes private login,
+logout and refresh writes, with atomic encrypted-file replacement. The desktop's
+exclusive data-directory lock protects it across processes. React receives only
+credential metadata and active login prompts; secret answers travel through a
+validated IPC request, are not echoed to snapshots, and are cleared from the form.
+Provider failure bodies are replaced with reconnect guidance on desktop. The TUI
+keeps its existing environment/shared-pi behavior (see [its guide](ironman-tui.md)).
+
+**Validation still required:** real provider browser/callback/device flows,
+expired/revoked-token recovery, and OS encryption/installation on a clean Windows
+account. Automated tests cover SDK API-key login, interaction adaptation,
+cancellation, encrypted persistence/refresh serialization, offline transport
+blocking, IPC validation and Electron shared-store restart/chat. This is not yet
+a claim that Slice 2's clean-Windows acceptance gate has passed.
 
 ## Architecture
 
@@ -284,17 +317,17 @@ X11/Wayland session type, and whether either graphics diagnostic changes it.
 
 ### Slice 2 — graphical authentication and onboarding
 
-- [ ] Inspect the **pinned** pi SDK's public interactive login/logout APIs and
+- [x] Inspect the **pinned** pi SDK's public interactive login/logout APIs and
       supported provider flows; only upgrade deliberately with refresh regression tests.
-- [ ] Introduce a private Loadstone-owned credential store. Existing shared pi login
+- [x] Introduce a private Loadstone-owned credential store. Existing shared pi login
       becomes an explicit choice with disclosure that refresh writes to that store.
-- [ ] Use SDK locking/refresh, not copied OAuth tokens or hand-written OAuth flows.
+- [x] Use SDK locking/refresh, not copied OAuth tokens or hand-written OAuth flows.
 - [ ] Build first-run choice: supported browser login, API key, existing pi login,
       or continue without AI. Use the system browser; support callback/device/paste
       fallback where appropriate, cancellation, timeout, logout and revoked credentials.
-- [ ] Decide OS credential encryption/keychain integration without breaking SDK
+- [x] Decide OS credential encryption/keychain integration without breaking SDK
       refresh. POSIX modes/umask are not a complete Windows secret-storage strategy.
-- [ ] Add model discovery/selection with account compatibility and cost guidance.
+- [x] Add model discovery/selection with account compatibility and cost guidance.
 - [ ] Replace TUI-specific notices with structured operation/error results and
       finish extracting typed application methods. Never surface raw provider secrets.
 - [ ] Confirm provider terms before advertising subscription compatibility.

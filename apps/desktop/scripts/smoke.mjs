@@ -96,6 +96,58 @@ try {
     await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
     1,
   );
+  assert.equal(
+    (await page.evaluate(() => window.loadstone.snapshot())).connection.mode,
+    "offline",
+    "first run does not silently reuse pi login",
+  );
+  // Exercise the actual graphical API-key interaction and native encryption.
+  await page.getByLabel("Credential storage").selectOption("private");
+  await page.getByLabel("Provider", { exact: true }).selectOption("openai");
+  await page.getByRole("button", { name: "Connect API key", exact: true }).click();
+  await page.locator("#login-answer").waitFor();
+  await page.locator("#login-answer").fill("private-smoke-key-not-real");
+  await page.getByRole("button", { name: "Continue login", exact: true }).click();
+  await page.waitForFunction(async () => !(await window.loadstone.snapshot()).connection.busy);
+  assert.equal(
+    JSON.stringify(await page.evaluate(() => window.loadstone.snapshot())).includes(
+      "private-smoke-key-not-real",
+    ),
+    false,
+    "secret answers never enter snapshots",
+  );
+  const encryptionAvailable = await application.evaluate(
+    ({ safeStorage }) =>
+      safeStorage.isEncryptionAvailable() &&
+      (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
+  );
+  if (encryptionAvailable) {
+    const { readFile } = await import("node:fs/promises");
+    assert.equal(
+      (await readFile(join(home, "credentials.enc"))).includes(
+        Buffer.from("private-smoke-key-not-real"),
+      ),
+      false,
+      "native private store is encrypted",
+    );
+    await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+    await page.waitForFunction(
+      async () =>
+        !(await window.loadstone.snapshot()).connection.providers.some((p) => p.connected),
+    );
+  } else {
+    assert.match(
+      (await page.evaluate(() => window.loadstone.snapshot())).connection.message,
+      /Connection failed/,
+      "unavailable OS encryption fails closed",
+    );
+  }
+  await page.getByLabel("Credential storage").selectOption("shared");
+  await page.waitForFunction(async () =>
+    (await window.loadstone.snapshot()).connection.providers.some(
+      (p) => p.id === "openai" && p.connected,
+    ),
+  );
   await page.getByLabel("RuneScape name").fill("SmokeIron");
   await page.getByRole("button", { name: "Open character" }).click();
   await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();

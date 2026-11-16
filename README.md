@@ -44,7 +44,8 @@ or [the TUI guide](docs/ironman-tui.md) for the full command reference.
 
 The Electron desktop client is an internal preview of a self-contained player app.
 It shares the TUI's character memory, agent and resumable conversations, with a
-sandboxed React interface. Guided login and production updates are not included yet.
+sandboxed React interface. Graphical provider setup is available; production updates
+are not included yet.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -52,9 +53,10 @@ pnpm run desktop
 ```
 
 Close the TUI first: both apps lock the same `~/.loadstone` data directory. Use
-`LOADSTONE_HOME` for an isolated preview. Existing pi credentials or provider
-environment keys are currently required for AI chat; memory and RuneMetrics sync
-work without authentication. The packaged app bundles its runtime and does not
+`LOADSTONE_HOME` for an isolated preview. First run starts without AI. Use **Connect AI**
+to save private OS-encrypted credentials, explicitly share pi login (including refresh
+writes), or stay offline. Model selection includes catalog cost estimates. Memory and
+RuneMetrics sync work without authentication. The packaged app bundles its runtime and does not
 require players to install Node or pi.
 
 See [Desktop architecture and delivery plan](docs/desktop.md) for packaging,

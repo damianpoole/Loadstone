@@ -3,6 +3,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import { createCompanionModels } from "./auth";
 export { createCompanionModels, createCompanionConnection } from "./auth";
+export { DesktopAuth, EncryptedCredentialStore, safeLoginURL } from "./desktop-auth";
+export type { DesktopAuthState, SecretCodec } from "./desktop-auth";
 export type { CompanionConnection } from "./auth";
 import {
   Harness,
@@ -101,6 +103,7 @@ export async function openCompanion(options: {
   models?: Models;
   onChange: (view: AgentView) => void;
   onError?: (error: string) => void;
+  graphical?: boolean;
 }) {
   const models = options.models ?? (await createCompanionModels());
   const registry = createRegistry();
@@ -121,7 +124,9 @@ export async function openCompanion(options: {
       },
       onReport: (error, info) =>
         options.onError?.(
-          `${info.type}: ${error instanceof Error ? error.message : String(error)}`,
+          options.graphical
+            ? "Provider or conversation operation failed. Check Connection settings and reconnect if needed."
+            : `${info.type}: ${error instanceof Error ? error.message : String(error)}`,
         ),
     },
     BACKGROUND_CONTEXT,
@@ -148,7 +153,27 @@ export async function openCompanion(options: {
       const live = view.docs["pi.live"] as unknown as LiveState | undefined;
       const model = view.docs["pi.agent"]?.model as unknown as ModelRef | undefined;
       options.onChange({
-        messages: [...entries.values()].sort((a, b) => a.id - b.id).flatMap(entryMessages),
+        messages: [...entries.values()]
+          .sort((a, b) => a.id - b.id)
+          .flatMap((entry) => {
+            if (!options.graphical) return entryMessages(entry);
+            // Provider error bodies may echo request credentials. Keep normal chat,
+            // but replace error-only assistant entries before crossing desktop IPC.
+            const safeEntry = {
+              ...entry,
+              model: entry.model?.map((message) =>
+                message.role === "assistant" && message.errorMessage
+                  ? {
+                      ...message,
+                      content: [],
+                      errorMessage:
+                        "Provider request failed. Check Connection settings and reconnect.",
+                    }
+                  : message,
+              ),
+            };
+            return entryMessages(safeEntry);
+          }),
         partial:
           live?.generation?.message?.content
             .filter((b) => b.type === "text")
@@ -182,12 +207,19 @@ export async function openCompanion(options: {
           if (closed) return;
           failure =
             result.status === "unanswered"
-              ? `${result.reason}: ${JSON.stringify(result.detail ?? "")}`
+              ? options.graphical
+                ? "Request could not finish. Check Connection settings and reconnect if your login expired or was revoked."
+                : `${result.reason}: ${JSON.stringify(result.detail ?? "")}`
               : undefined;
           publish(latest);
         })
         .catch((error) => {
-          if (!closed) options.onError?.(String(error));
+          if (!closed)
+            options.onError?.(
+              options.graphical
+                ? "Request failed. Check Connection settings and try again."
+                : String(error),
+            );
         });
       return submission;
     };
@@ -195,7 +227,9 @@ export async function openCompanion(options: {
     for (const task of inspection.tasks)
       if (task.state.kind === "blocked")
         options.onError?.(
-          `Task blocked: ${task.state.reason}. /retry retries parked work; Esc cancels it.`,
+          options.graphical
+            ? "Conversation recovery is paused. Cancel work and reconnect your provider before continuing."
+            : `Task blocked: ${task.state.reason}. /retry retries parked work; Esc cancels it.`,
         );
     for (const pending of inspection.submissions) {
       const submission = await harness.submission(pending.id, BACKGROUND_CONTEXT);
@@ -207,17 +241,25 @@ export async function openCompanion(options: {
         if (!content.trim()) throw new Error("Enter a message.");
         const agent = await root.agent(BACKGROUND_CONTEXT);
         if (!agent.model || !models.getModel(agent.model.provider, agent.model.modelId))
-          throw new Error("Unknown model. Use /model PROVIDER MODEL_ID.");
+          throw new Error(
+            options.graphical
+              ? "Choose a model in Connection settings."
+              : "Unknown model. Use /model PROVIDER MODEL_ID.",
+          );
         const auth = await models
           .getAuth(agent.model.provider, { signal: AbortSignal.timeout(35_000) })
           .catch(() => {
             throw new Error(
-              `Authentication failed for ${agent.model!.provider}. Reconnect with /login ${agent.model!.provider} in pi, then restart Loadstone, or check your environment credentials. Use /auth for status. No chat was sent.`,
+              options.graphical
+                ? "Authentication failed. Reconnect in Connection settings, then try your draft again. No chat was sent."
+                : `Authentication failed for ${agent.model!.provider}. Reconnect with /login ${agent.model!.provider} in pi, then restart Loadstone, or check your environment credentials. Use /auth for status. No chat was sent.`,
             );
           });
         if (!auth)
           throw new Error(
-            `No credentials for ${agent.model.provider}. Sign in with /login ${agent.model.provider} in pi and restart Loadstone, or configure environment credentials. Use /auth for status and /model pi to use pi's default. Memory and sync work without model authentication.`,
+            options.graphical
+              ? "No credentials. Connect a provider in Connection settings. Memory and RuneMetrics sync work without AI."
+              : `No credentials for ${agent.model.provider}. Sign in with /login ${agent.model.provider} in pi and restart Loadstone, or configure environment credentials. Use /auth for status and /model pi to use pi's default. Memory and sync work without model authentication.`,
           );
         failure = undefined;
         return track(

@@ -25,6 +25,12 @@ describe("desktop request boundary", () => {
     [],
     {},
     { type: "backup" },
+    { type: "connection", mode: "ambient" },
+    { type: "login", provider: "openai", method: "password" },
+    { type: "answerLogin", id: "1", value: "secret" },
+    { type: "answerLogin", id: 1, value: "" },
+    { type: "answerLogin", id: 1, value: "x".repeat(16001) },
+    { type: "logout", provider: "" },
     { type: "send", text: "/backup" },
     { type: "send", text: " " },
     { type: "send", text: "a".repeat(32001) },
@@ -38,6 +44,12 @@ describe("desktop request boundary", () => {
       type: "send",
       text: "Hello",
     });
+    expect(
+      validateRequest({ type: "login", provider: "openai", method: "oauth", key: "ignored" }),
+    ).toEqual({ type: "login", provider: "openai", method: "oauth" });
+    expect(
+      validateRequest({ type: "answerLogin", id: 1, value: "response", url: "file:///etc/passwd" }),
+    ).toEqual({ type: "answerLogin", id: 1, value: "response" });
     expect(validateRequest({ type: "character", name: "My Iron" })).toEqual({
       type: "character",
       name: "My Iron",

@@ -70,7 +70,7 @@ export class Controller {
   private companion?: Companion;
   private connection?: Promise<CompanionConnection>;
   private getConnection() {
-    return (this.connection ??= createCompanionConnection().catch((error) => {
+    return (this.connection ??= this.connect().catch((error) => {
       this.connection = undefined;
       throw error;
     }));
@@ -83,6 +83,8 @@ export class Controller {
   constructor(
     readonly home: string,
     private readonly openAgent = openCompanion,
+    private readonly connect = createCompanionConnection,
+    private readonly graphical = false,
   ) {
     this.memory = new MemoryStore(join(home, "memory.sqlite"));
   }
@@ -147,6 +149,7 @@ export class Controller {
     this.refresh();
     await mkdir(join(this.home, "sessions"), { recursive: true, mode: 0o700 });
     this.companion = await this.openAgent({
+      graphical: this.graphical,
       path: join(this.home, "sessions", `${session.id}.sqlite`),
       memory: this.memory,
       characterId: character.id,
@@ -164,6 +167,11 @@ export class Controller {
         if (epoch === this.epoch) this.report(error);
       },
     });
+  }
+  async reconnect() {
+    if (this.operation || this.state.view.busy) throw new Error("Cancel current work first.");
+    this.connection = undefined;
+    await this.initialize();
   }
   async cancel() {
     this.syncAbort?.abort();
