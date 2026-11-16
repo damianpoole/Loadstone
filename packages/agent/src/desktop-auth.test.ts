@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -72,6 +72,69 @@ describe("private desktop credentials", () => {
     const reopened = new DesktopAuth(path, codec, vi.fn());
     await reopened.initialize();
     expect(reopened.state.mode).toBe("private");
+  });
+  it.each(["unreadable credentials", "preference write failure"])(
+    "keeps the working shared connection intact after %s during a switch",
+    async (failure) => {
+      const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+      const created = vi.spyOn(ModelRuntime, "create");
+      vi.spyOn(ModelRuntime.prototype, "listCredentials").mockResolvedValueOnce([
+        { providerId: "openai", type: "api_key" },
+      ]);
+      const path = await home();
+      const auth = new DesktopAuth(path, codec, vi.fn());
+      await auth.choose("shared");
+      const previous = auth.state;
+      const runtime = await created.mock.results[0]!.value;
+      const connection = await auth.connection();
+      if (failure === "unreadable credentials") {
+        await writeFile(join(path, "credentials.enc"), "corrupt ciphertext");
+      } else {
+        await rm(join(path, "auth-mode"));
+        await mkdir(join(path, "auth-mode"));
+      }
+
+      await expect(auth.choose("private")).rejects.toThrow();
+
+      expect(auth.state).toEqual(previous);
+      expect(auth.state.mode).toBe("shared");
+      if (failure === "unreadable credentials")
+        expect(await readFile(join(path, "auth-mode"), "utf8")).toBe("shared");
+      // The service retains the old companion on failure; new connections must also
+      // use the old runtime rather than the failed candidate store.
+      expect((await auth.connection()).models.getModels("openai")[0]).toBe(
+        runtime.getModels("openai")[0],
+      );
+      const transport = vi
+        .spyOn(runtime, "completeSimple")
+        .mockRejectedValue(new Error("test transport"));
+      await expect(
+        connection.models.completeSimple(runtime.getModels("openai")[0]!, { messages: [] }),
+      ).rejects.toThrow("test transport");
+      expect(transport).toHaveBeenCalledOnce();
+    },
+  );
+  it("offers only supported connected models from a shared store", async () => {
+    const { ModelRuntime } = await import("@earendil-works/pi-coding-agent");
+    vi.spyOn(ModelRuntime.prototype, "listCredentials").mockResolvedValue([
+      { providerId: "google", type: "api_key" },
+      { providerId: "openai", type: "api_key" },
+    ]);
+    const auth = new DesktopAuth(await home(), codec, vi.fn());
+    await auth.choose("shared");
+    expect(auth.state.models.length).toBeGreaterThan(0);
+    expect(auth.state.models.every((model) => model.provider === "openai")).toBe(true);
+    expect((await auth.connection()).defaultModel.provider).toBe("openai");
+
+    vi.mocked(ModelRuntime.prototype.listCredentials).mockResolvedValue([
+      { providerId: "google", type: "api_key" },
+    ]);
+    await auth.choose("shared");
+    expect(auth.state.models).toEqual([]);
+    const connection = await auth.connection();
+    expect(() =>
+      connection.models.streamSimple(connection.models.getModels("google")[0]!, { messages: [] }),
+    ).toThrow("Reconnect");
   });
   it("drives the pinned SDK API-key prompt without putting secrets in state", async () => {
     const path = await home();

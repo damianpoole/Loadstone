@@ -144,17 +144,21 @@ export class DesktopAuth {
         refreshOnCreate: false,
         allowModelNetwork: false,
       });
-      this.runtime = runtime;
+      // Validate the new store before replacing the runtime, preference or metadata.
+      // A failed switch must leave the existing companion and displayed account aligned.
+      const metadata = await this.metadata(runtime, mode);
       await writeFile(join(this.home, "auth-mode"), mode, { mode: 0o600 });
-      this.update({ mode, prompt: undefined, link: undefined });
-      await this.refresh();
+      this.runtime = runtime;
+      this.update({ mode, prompt: undefined, link: undefined, ...metadata });
     } finally {
       this.update({ busy: false });
     }
   }
   private async refresh() {
-    const runtime = this.runtime!;
-    const credentials = this.state.mode === "offline" ? [] : await runtime.listCredentials();
+    this.update(await this.metadata(this.runtime!, this.state.mode));
+  }
+  private async metadata(runtime: ModelRuntime, mode: DesktopAuthState["mode"]) {
+    const credentials = mode === "offline" ? [] : await runtime.listCredentials();
     const configured = new Set(credentials.map((c) => c.providerId));
     // Keep the initial supported surface deliberately small. No subscription claims.
     const providers = runtime
@@ -167,9 +171,10 @@ export class DesktopAuth {
         oauth: !!p.auth?.oauth,
         connected: configured.has(p.id),
       }));
+    const connected = new Set(providers.filter((p) => p.connected).map((p) => p.id));
     const models = runtime
       .getModels()
-      .filter((m) => configured.has(m.provider))
+      .filter((m) => connected.has(m.provider))
       .map((m) => ({
         provider: m.provider,
         id: m.id,
@@ -177,14 +182,14 @@ export class DesktopAuth {
         input: m.cost.input,
         output: m.cost.output,
       }));
-    this.update({
+    return {
       providers,
       models,
       message:
-        this.state.mode === "offline"
+        mode === "offline"
           ? "AI is off. Character memory and RuneMetrics sync remain available."
           : "Choose a model compatible with your account. Prices are estimates per million tokens; provider billing and eligibility apply.",
-    });
+    };
   }
   async connection(): Promise<CompanionConnection> {
     if (!this.runtime) throw new Error("Connection settings are not ready.");
