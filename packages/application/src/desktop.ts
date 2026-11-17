@@ -1,20 +1,34 @@
 import type { DesktopAuth, DesktopAuthState } from "@loadstone/agent";
-import type { Character } from "@loadstone/memory";
-import { Controller, type AppState } from "./controller";
+import {
+  validateChange,
+  factKinds,
+  formatGoals,
+  type Character,
+  type Receipt,
+  type FactKind,
+  type FactValue,
+} from "@loadstone/memory";
+import { Controller, type AppState, type PlayerAction } from "./controller";
 
 export type DesktopRequest =
+  | PlayerAction
+  | { type: "export" | "backup" }
+  | { type: "openWiki"; url: string }
   | { type: "connection"; mode: "private" | "shared" | "offline" }
   | { type: "login"; provider: string; method: "api_key" | "oauth" }
   | { type: "answerLogin"; id: number; value: string }
   | { type: "logout"; provider: string }
   | { type: "cancelLogin" }
-  | { type: "character"; name: string }
+  | { type: "character"; name: string; mode?: "ironman" | "hardcore" | "group-ironman" }
   | { type: "send"; text: string }
   | { type: "model"; provider: string; modelId: string }
   | { type: "sync" | "cancel" | "earlier" | "newSession" | "auth" };
 export interface DesktopSnapshot extends AppState {
   characters: Character[];
   connection?: DesktopAuthState;
+  history: Receipt[];
+  reviews: Receipt[];
+  goals: string;
 }
 export interface DesktopAPI {
   snapshot(): Promise<DesktopSnapshot>;
@@ -49,10 +63,62 @@ export function validateRequest(value: unknown): DesktopRequest {
       return { type: "answerLogin", id: request.id as number, value: text("value", 16_000) };
     case "cancelLogin":
       return { type: "cancelLogin" };
+    case "openWiki": {
+      const url = new URL(text("url", 4000));
+      if (
+        url.protocol !== "https:" ||
+        url.hostname !== "runescape.wiki" ||
+        url.port ||
+        url.username ||
+        url.password
+      )
+        throw new Error("Only HTTPS RuneScape Wiki links can be opened.");
+      return { type: "openWiki", url: url.href };
+    }
+    case "resume":
+    case "undo":
+      return { type: request.type, id: text("id", 200) };
+    case "review":
+      if (typeof request.accept !== "boolean") throw new Error("Invalid review decision.");
+      return { type: "review", id: text("id", 200), accept: request.accept };
+    case "plan":
+      return { type: "plan", target: text("target", 100) };
+    case "edit": {
+      if (!request.change || typeof request.change !== "object" || Array.isArray(request.change))
+        throw new Error("Invalid correction.");
+      const input = request.change as Record<string, unknown>;
+      if (
+        typeof input.kind !== "string" ||
+        !factKinds.includes(input.kind as FactKind) ||
+        typeof input.key !== "string"
+      )
+        throw new Error("Invalid memory kind or key.");
+      const serialized = JSON.stringify(input.value);
+      if (serialized === undefined || serialized.length > 16000)
+        throw new Error("Invalid memory value.");
+      const change = {
+        kind: input.kind as FactKind,
+        key: input.key.trim(),
+        value: input.value as FactValue | null,
+      };
+      validateChange(change);
+      return { type: "edit", change };
+    }
     case "character": {
       const name = text("name", 12);
+      if (
+        request.mode !== undefined &&
+        !["ironman", "hardcore", "group-ironman"].includes(String(request.mode))
+      )
+        throw new Error("Invalid character mode.");
       if (!/^[a-zA-Z0-9 _-]+$/.test(name)) throw new Error("Invalid RuneScape name.");
-      return { type: "character", name };
+      return request.mode === undefined
+        ? { type: "character", name }
+        : {
+            type: "character",
+            name,
+            mode: request.mode as "ironman" | "hardcore" | "group-ironman",
+          };
     }
     case "send": {
       const message = text("text", 32_000);
@@ -68,6 +134,8 @@ export function validateRequest(value: unknown): DesktopRequest {
         throw new Error("Model identifiers cannot contain spaces.");
       return { type: "model", provider, modelId };
     }
+    case "export":
+    case "backup":
     case "sync":
     case "cancel":
     case "earlier":
@@ -84,11 +152,19 @@ export class DesktopService {
   constructor(
     readonly controller: Controller,
     readonly auth?: DesktopAuth,
+    private readonly openWiki?: (url: string) => Promise<void>,
   ) {}
   snapshot = (): DesktopSnapshot => ({
     ...this.controller.snapshot(),
     characters: this.controller.memory.characters(),
     connection: this.auth?.state,
+    history: this.controller.state.character
+      ? this.controller.memory.history(this.controller.state.character.id)
+      : [],
+    reviews: this.controller.state.character
+      ? this.controller.memory.pending(this.controller.state.character.id)
+      : [],
+    goals: formatGoals(this.controller.state.facts),
   });
   subscribe(listener: (snapshot: DesktopSnapshot) => void) {
     const changed = () => listener(this.snapshot());
@@ -101,6 +177,10 @@ export class DesktopService {
   }
   async request(value: unknown): Promise<void> {
     const request = validateRequest(value);
+    if (request.type === "openWiki") {
+      if (!this.openWiki) throw new Error("External browser is unavailable.");
+      return this.openWiki(request.url);
+    }
     if (this.auth) {
       if (request.type === "cancelLogin") return this.auth.cancel();
       if (request.type === "answerLogin") return this.auth.answer(request.id, request.value);
@@ -122,7 +202,7 @@ export class DesktopService {
         return;
       }
       if (
-        request.type === "send" &&
+        (request.type === "send" || request.type === "plan") &&
         (this.auth.state.mode === "offline" ||
           this.auth.state.busy ||
           !this.auth.state.models.some(
@@ -150,8 +230,16 @@ export class DesktopService {
       case "answerLogin":
       case "cancelLogin":
         throw new Error("Graphical authentication is unavailable.");
+      case "resume":
+      case "review":
+      case "undo":
+      case "edit":
+      case "plan":
+        return this.controller.playerAction(request);
       case "character":
-        return execute(`/character ${request.name}`);
+        return execute(
+          request.mode ? `/create ${request.mode} ${request.name}` : `/character ${request.name}`,
+        );
       case "send":
         return execute(request.text);
       case "model":

@@ -4,6 +4,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { DesktopAPI, DesktopRequest, DesktopSnapshot } from "@loadstone/application";
 import "./style.css";
+import { PlayerControls } from "./player-controls";
 
 declare global {
   interface Window {
@@ -15,6 +16,9 @@ function App() {
   const [state, setState] = useState<DesktopSnapshot>();
   const [error, setError] = useState("");
   const [name, setName] = useState("");
+  const [mode, setMode] = useState<"ironman" | "hardcore" | "group-ironman">("ironman");
+  const [scale, setScale] = useState(100);
+  const anchor = useRef<{ height: number; top: number; first?: string } | undefined>(undefined);
   const [draft, setDraft] = useState("");
   const [provider, setProvider] = useState("");
   const [answer, setAnswer] = useState("");
@@ -43,8 +47,22 @@ function App() {
     setAnswer("");
   }, [state?.connection?.prompt?.id]);
   useEffect(() => {
-    if (follow.current && chat.current) chat.current.scrollTop = chat.current.scrollHeight;
-  }, [state?.view]);
+    anchor.current = undefined;
+    follow.current = true;
+  }, [state?.session?.id]);
+  useEffect(() => {
+    const element = chat.current;
+    if (!element) return;
+    if (anchor.current) {
+      if (anchor.current.first !== state?.view.messages[0]?.id) {
+        element.scrollTop = anchor.current.top + element.scrollHeight - anchor.current.height;
+        anchor.current = undefined;
+      } else if (!state?.processing && !submitting) {
+        // No older rows were returned; do not leave a stale anchor behind.
+        anchor.current = undefined;
+      }
+    } else if (follow.current) element.scrollTop = element.scrollHeight;
+  }, [state?.view, state?.processing, submitting]);
   const request = async (value: DesktopRequest) => {
     setError("");
     setSubmitting(true);
@@ -68,7 +86,10 @@ function App() {
   const busy = state.processing || state.view.busy || submitting;
   const connection = state.connection;
   return (
-    <main className="layout">
+    <main className="layout" style={{ fontSize: `${scale}%` }}>
+      <a className="skip-link" href="#message">
+        Skip to message
+      </a>
       <aside>
         <h1>
           Loadstone <small>Desktop preview</small>
@@ -77,7 +98,7 @@ function App() {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void request({ type: "character", name });
+            void request({ type: "character", name, mode });
           }}
         >
           <label htmlFor="rsn">RuneScape name</label>
@@ -88,6 +109,19 @@ function App() {
             onChange={(event) => setName(event.target.value)}
             placeholder="Your RSN"
           />
+          <label>
+            New character mode
+            <select
+              value={mode}
+              onChange={(event) => setMode(event.target.value as typeof mode)}
+              disabled={busy}
+            >
+              <option value="ironman">Ironman</option>
+              <option value="hardcore">Hardcore Ironman</option>
+              <option value="group-ironman">Group Ironman</option>
+            </select>
+          </label>
+          <p className="muted">Existing characters keep their saved mode.</p>
           <button disabled={busy || !name.trim()}>Open character</button>
         </form>
         {state.characters.length > 0 && (
@@ -281,25 +315,20 @@ function App() {
             </>
           )}
         </details>
-        <details open>
-          <summary>Saved memory ({state.facts.length})</summary>
-          <p className="muted">Last reported facts, not a live bank or game feed.</p>
-          {state.facts.length === 0 && (
-            <p>No saved facts yet. Sync or report your progress in chat.</p>
-          )}
-          {state.facts.map((fact) => (
-            <article className="fact" key={`${fact.kind}:${fact.key}`}>
-              <strong>{fact.key}</strong>{" "}
-              <span>
-                {typeof fact.value === "string" ? fact.value : JSON.stringify(fact.value)}
-              </span>
-              <small>
-                {fact.kind} · {fact.source} · {new Date(fact.observedAt).toLocaleDateString()}
-              </small>
-              <small>{fact.evidence}</small>
-            </article>
-          ))}
-        </details>
+        <label>
+          Text size
+          <select value={scale} onChange={(event) => setScale(Number(event.target.value))}>
+            <option value={100}>100%</option>
+            <option value={125}>125%</option>
+            <option value={150}>150%</option>
+          </select>
+        </label>
+        <PlayerControls
+          key={state.character?.id ?? "none"}
+          state={state}
+          busy={busy}
+          request={request}
+        />
       </aside>
       <section className="conversation">
         <header>
@@ -320,7 +349,21 @@ function App() {
           }}
         >
           {state.view.hasEarlier && (
-            <button disabled={busy} onClick={() => void request({ type: "earlier" })}>
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (chat.current)
+                  anchor.current = {
+                    height: chat.current.scrollHeight,
+                    top: chat.current.scrollTop,
+                    first: state.view.messages[0]?.id,
+                  };
+                follow.current = false;
+                void request({ type: "earlier" }).then((ok) => {
+                  if (!ok) anchor.current = undefined;
+                });
+              }}
+            >
               Load earlier messages
             </button>
           )}
@@ -333,6 +376,18 @@ function App() {
           {state.view.messages.map((message) => (
             <article className={`message ${message.role.toLowerCase()}`} key={message.id}>
               <strong>{message.role}</strong>
+              <button
+                className="copy"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(message.text)
+                    .catch(() =>
+                      setError("Could not copy message. Select the text and copy manually."),
+                    )
+                }
+              >
+                Copy message
+              </button>
               <Markdown
                 remarkPlugins={[remarkGfm]}
                 skipHtml
@@ -340,6 +395,11 @@ function App() {
                   a: ({ children, href }) => (
                     <span title={href}>
                       {children} {href && <small>({href})</small>}
+                      {href?.startsWith("https://runescape.wiki/") && (
+                        <button onClick={() => void request({ type: "openWiki", url: href })}>
+                          Open wiki in browser…
+                        </button>
+                      )}
                     </span>
                   ),
                   img: () => null,
@@ -356,7 +416,7 @@ function App() {
             </article>
           )}
         </section>
-        <section className="status" aria-label="Status">
+        <section className="status" aria-label="Status" aria-live="polite" aria-atomic="false">
           {state.notice && <p>{state.notice}</p>}
           {state.view.activity.map((activity) => (
             <p key={activity}>{activity}</p>

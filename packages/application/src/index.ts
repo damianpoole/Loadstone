@@ -1,3 +1,4 @@
+export type { Fact, FactKind, FactValue, Receipt } from "@loadstone/memory";
 export { DesktopAuth } from "@loadstone/agent";
 export { Controller, HELP } from "./controller";
 export type { AppState } from "./controller";

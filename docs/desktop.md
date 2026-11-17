@@ -22,12 +22,20 @@ Slice 2 adds graphical provider connection, an encrypted Loadstone-owned credent
 store, explicit shared-pi opt-in, offline onboarding and account-scoped model selection.
 The pinned pi SDK remains at 1.4.0; no SDK upgrade or hand-written OAuth is involved.
 
-**Not included:** review/undo controls, a session browser, production signing/notarization, automatic
-updates, migration backups, branding/icons, or public downloads. Native Wayland,
+Slice 3's player-control increment adds memory correction/review/history/undo with
+provenance, searchable session resume, character modes, goals/planning, character
+exports and all-character/chat backups. Chat adds copy controls, confirmed HTTPS
+RuneScape Wiki links, earlier-message scroll anchoring and text scaling. The display
+can reload after a renderer crash without restarting the backend.
+
+**Not included:** in-app backup restore/data-folder migration, large-history
+virtualization, production signing/notarization, automatic updates, migration
+backups, branding/icons, or public downloads. Native Wayland,
 AppImage runtime behavior and distribution coverage beyond the Linux CI runner
 still need manual validation.
-The preview is not yet suitable for general RS3 players. Some backend notices still
-refer to TUI slash commands; those are not desktop instructions.
+The preview is not yet suitable for general RS3 players. Memory tool receipts and
+player controls now use desktop instructions, but full typed-method/notice extraction
+is still unfinished; model-generated advice may still mention slash commands.
 
 ## Run from source
 
@@ -169,8 +177,9 @@ package-install `engines` field.
 - CSP forbids renderer connections, inline/eval scripts, frames, forms and objects.
 - Window opening, navigation, webviews and permission requests are denied.
 - Model Markdown is rendered as React elements; raw HTML and images are disabled.
-  Links currently display their URL but are not clickable. Future external links
-  must use a backend HTTP(S)-only allowlist, never arbitrary `shell.openExternal`.
+  Only HTTPS `runescape.wiki` links can open externally, after a native confirmation
+  showing the URL. The backend rejects other hosts, embedded credentials and custom
+  ports; no arbitrary URL/path/shell API is exposed. Other links remain text.
 - Credentials stay in the SDK/backend. The status response contains metadata,
   never keys/tokens. Provider keys must never be written to renderer storage.
 - No coding-agent tools, project extensions or user scripts are deliberately loaded
@@ -338,18 +347,52 @@ No shell, environment variables, or manual JSON editing are required.
 
 ### Slice 3 — complete player-facing interaction and data controls
 
-- [ ] Memory review/approve/reject/undo/history with provenance, clearly explaining
-      automatic saves. Until then use the TUI while desktop is closed to review saves.
-- [ ] Session list/resume, character modes (desktop creation currently defaults to
-      Ironman), goals/plans, readable tool receipts rather than slash-command guidance.
-- [ ] Backup/export/restore flows and explicit data-folder selection/migration.
-- [ ] Better incremental Markdown, copy controls, safe external links, stable
-      scroll anchoring when loading older messages and large-history virtualization.
-- [ ] Accessible keyboard flow, screen-reader testing, text scaling, high DPI,
-      reduced motion and readable contrast; tests for forms, drafts and errors.
-- [ ] Renderer-crash recovery and responsive shutdown/cancel behavior under slow
-      network/storage; profile main-process SQLite work before choosing a utility process.
+- [x] Memory correction/review/approve/reject/undo/history with before/after values
+      and provenance, clearly explaining automatic saves and whole-operation approval.
+- [x] Searchable session list/resume, Ironman/Hardcore/Group Ironman creation,
+      goals/plans, and desktop-specific memory tool receipts.
+- [x] Character JSON export and consistent all-character/conversation backup controls
+      using the existing backend; no renderer-controlled filesystem paths.
+- [ ] In-app restore and explicit data-folder selection/migration. These need a
+      separately tested offline replacement/compatibility design; no destructive
+      live-database replacement is exposed by this increment.
+- [x] Message copy, confirmed allowlisted wiki links, and earlier-message scroll
+      anchoring. Existing history remains paged by the agent.
+- [ ] Incremental Markdown and large-history virtualization/performance validation.
+- [x] Text scaling, keyboard-visible focus, skip-to-composer link, polite status
+      announcements, reduced-motion styling, and Electron form/review/session tests.
+- [ ] Screen-reader, full keyboard, high-DPI/contrast manual acceptance and broader
+      draft/error/scroll regression coverage. Scaling is per-window, not persisted.
+- [x] Renderer-crash reload/close choice retains backend ownership and saved data;
+      a normal renderer reload is covered by smoke. Unsent drafts are not durable.
+- [ ] Forced-crash and slow network/storage shutdown/cancel acceptance; profile
+      main-process SQLite work before choosing a utility process.
 - [ ] Measure idle CPU/memory and responsiveness while RS3 is running.
+
+This increment is **not completion of the entire Slice 3 acceptance gate**. History
+shows the latest 100 operations plus every pending review; character export includes
+full history. All decisions are character-scoped and serialized with agent/sync work.
+Stale approval and undo of facts touched by newer updates fail without changing memory.
+The correction form accepts kind-validated JSON values (including quoted text), not
+commands; regressions and deletions become proposals instead of silently overwriting
+progress. New-character mode selection never changes an existing character's mode.
+
+Use **Export and backup** in the sidebar. Export contains facts and memory audit
+history, not conversation text. Backup contains all character memory and session
+SQLite files: the backend closes the durable companion, uses SQLite's backup API for
+memory, copies closed session files, then reopens the companion even if copying fails.
+Output paths appear in Status under the current data home's `exports/` or `backups/`.
+Neither includes credentials. A character JSON export is **not** a restorable chat
+backup. Until graphical restore ships, follow the [offline recovery procedure](ironman-tui.md#storage-backup-and-privacy)
+while **both desktop and TUI are closed**, keep the originals, and restore only with
+a compatible application version. Never copy a backup over open databases.
+
+Automated coverage includes kind/size/URL IPC rejection, provenance-preserving edits,
+review/reject/undo and stale/cross-character guards, exported history, backup contents
+and reopening, and chat after backup. Electron smoke exercises correction, regression
+rejection, undo, session search/resume, text scaling, export/backup and display reload.
+No live provider, forced-crash, screen-reader, RS3 performance or Windows manual
+acceptance is claimed by these tests.
 
 **Acceptance:** a player can discover and correct saved information entirely in the
 GUI and understand what is local, what was synced, and what goes to an AI provider.

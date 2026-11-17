@@ -267,10 +267,44 @@ try {
   await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
   await page.getByText("Smoke test fixture", { exact: true }).waitFor();
   await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
-  await page.getByText("Hello Loadstone", { exact: true }).waitFor();
+  await page
+    .getByLabel("Conversation messages")
+    .getByText("Hello Loadstone", { exact: true })
+    .waitFor();
   const restored = await page.evaluate(() => window.loadstone.snapshot());
   assert.equal(restored.session.id, snapshot.session.id);
   assert.equal(restored.facts[0].value, 90);
+  // Player-facing forms, not command strings: correction, review, undo and session resume.
+  await page.getByRole("button", { name: "Correct herblore", exact: true }).click();
+  await page.getByLabel("Correct herblore (JSON value)").fill("91");
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await page.waitForFunction(async () => (await window.loadstone.snapshot()).facts[0].value === 91);
+  await page.getByText("Memory history", { exact: true }).click();
+  await page.getByRole("button", { name: "Undo update…", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm undo", exact: true }).click();
+  await page.waitForFunction(async () => (await window.loadstone.snapshot()).facts[0].value === 90);
+  await page.getByRole("button", { name: "Correct herblore", exact: true }).click();
+  await page.getByLabel("Correct herblore (JSON value)").fill("80");
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await page.getByRole("button", { name: "Reject update", exact: true }).click();
+  assert.equal((await page.evaluate(() => window.loadstone.snapshot())).facts[0].value, 90);
+  await page.getByRole("button", { name: "New conversation", exact: true }).click();
+  await page.getByText(/Conversations \(2\)/).click();
+  await page.getByLabel("Find conversation").fill("Hello Loadstone");
+  await page.getByRole("button", { name: "Resume conversation", exact: true }).click();
+  await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
+  assert.equal(
+    (await page.evaluate(() => window.loadstone.snapshot())).session.id,
+    snapshot.session.id,
+  );
+  await page.getByLabel("Text size").selectOption("150");
+  await page.getByText("Export and backup", { exact: true }).click();
+  await page.getByRole("button", { name: "Export character JSON", exact: true }).click();
+  await page.getByText(/Exported character facts and history to/).waitFor();
+  await page.getByRole("button", { name: "Back up all characters and chats", exact: true }).click();
+  await page.getByText(/Backup saved to/).waitFor();
+  await page.reload();
+  await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
   await application.close();
   running = undefined;
   const release = await lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 });
