@@ -49,6 +49,24 @@ describe("character memory", () => {
     expect(store.sessions(other)).toEqual([]);
     expect(() => store.review(other, "one", true)).toThrow();
   });
+  it("versions committed fact and audit transactions, but not session metadata or failures", () => {
+    const base = store.revision;
+    const session = store.createSession(id);
+    store.nameSession(id, session.id, "A chat title");
+    store.setSetting("activeCharacter", id);
+    expect(store.revision).toBe(base);
+
+    store.apply(update(id, "one", [{ kind: "skill", key: "Herblore", value: 90 }]));
+    expect(store.revision).toBe(base + 1);
+    store.apply(update(id, "two", [{ kind: "skill", key: "Herblore", value: 80 }]));
+    expect(store.revision).toBe(base + 2);
+    store.review(id, "two", false);
+    expect(store.revision).toBe(base + 3);
+    expect(() => store.review(id, "two", true)).toThrow();
+    expect(store.revision).toBe(base + 3);
+    store.undo(id, "one");
+    expect(store.revision).toBe(base + 4);
+  });
   it("persists facts, history, settings and sessions across reopen", () => {
     store.apply(update(id, "one", [{ kind: "quest", key: "Plague's End", value: "COMPLETED" }]));
     store.setSetting("activeCharacter", id);

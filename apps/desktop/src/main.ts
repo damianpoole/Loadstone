@@ -7,6 +7,7 @@ import {
   safeStorage,
   shell,
   type IpcMainInvokeEvent,
+  type WebContents,
 } from "electron";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -101,7 +102,19 @@ async function main() {
   await authentication.initialize();
   const auth = authentication;
   controller = new Controller(home, undefined, () => auth.connection(), true);
-  const service = new DesktopService(controller, auth);
+  const service = new DesktopService(controller, auth, async (url) => {
+    const { response } = await dialog.showMessageBox({
+      type: "question",
+      title: "Open RuneScape Wiki in your browser?",
+      message: "This leaves Loadstone and contacts the RuneScape Wiki in your system browser.",
+      detail: url,
+      buttons: ["Cancel", "Open wiki"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (response === 1) await shell.openExternal(url);
+  });
   controller.state = {
     ...controller.state,
     notice:
@@ -109,10 +122,6 @@ async function main() {
   };
 
   const renderer = pathToFileURL(join(__dirname, "renderer", "index.html")).href;
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-    callback(false),
-  );
-  session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -141,6 +150,23 @@ async function main() {
       webviewTag: false,
     },
   });
+  const allowClipboardWrite = (
+    contents: WebContents | null,
+    permission: string,
+    details: { isMainFrame: boolean; requestingUrl?: string },
+  ) =>
+    !closing &&
+    !window.isDestroyed() &&
+    contents === window.webContents &&
+    permission === "clipboard-sanitized-write" &&
+    details.isMainFrame &&
+    trustedFrame(details.requestingUrl, renderer);
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(allowClipboardWrite(contents, permission, details)),
+  );
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    allowClipboardWrite(contents, permission, details),
+  );
   const authorize = (event: IpcMainInvokeEvent) => {
     if (
       closing ||
@@ -153,6 +179,10 @@ async function main() {
   ipcMain.handle(channels.snapshot, (event) => {
     authorize(event);
     return service.snapshot();
+  });
+  ipcMain.handle(channels.memory, (event) => {
+    authorize(event);
+    return service.memory();
   });
   ipcMain.handle(channels.request, async (event, request: unknown) => {
     authorize(event);
@@ -168,11 +198,22 @@ async function main() {
   window.webContents.on("render-process-gone", (_event, details) => {
     if (closing) return;
     console.error(`[Loadstone] Renderer stopped: ${details.reason} (exit ${details.exitCode}).`);
-    dialog.showErrorBox(
-      "Loadstone renderer stopped",
-      "The desktop renderer stopped unexpectedly. Try LOADSTONE_DISABLE_GPU=1 when launching from a terminal, and check the terminal diagnostics.",
-    );
-    app.quit();
+    void dialog
+      .showMessageBox(window, {
+        type: "warning",
+        title: "Loadstone display stopped",
+        message:
+          "The display stopped unexpectedly. Reload it to reconnect to your saved conversation. An unsent draft may be lost; stored memory and backend work are not reset.",
+        buttons: ["Reload display", "Close Loadstone"],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then(({ response }) => {
+        if (closing || window.isDestroyed()) return;
+        if (response === 0) window.webContents.reload();
+        else app.quit();
+      })
+      .catch(() => app.quit());
   });
   // Restore in parallel with loading the visible UI. Controller.processing blocks
   // mutations until restoration completes, and its updates reach the renderer.

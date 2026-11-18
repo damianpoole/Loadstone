@@ -10,6 +10,7 @@ import {
   type FactKind,
   type FactValue,
   type ChatSession,
+  type Change,
 } from "@loadstone/memory";
 import {
   openCompanion,
@@ -39,6 +40,12 @@ Home/End — oldest/latest loaded text • Tab — chat/memory (Mac: Fn+↑/↓ 
 Facts: skill=1–120, quest=COMPLETED|STARTED|NOT_STARTED, unlock=true|false,
 item={"owned":true,"quantity":1}, goal="active"|"paused"|"completed", preference/note=text.
 Unknown is not false. Items are last reported, not a live bank. /help shows this again.`;
+export type PlayerAction =
+  | { type: "resume" | "undo"; id: string }
+  | { type: "review"; id: string; accept: boolean }
+  | { type: "edit"; change: Change }
+  | { type: "plan"; target: string };
+
 export interface AppState {
   character?: Character;
   session?: ChatSession;
@@ -80,6 +87,7 @@ export class Controller {
   private closing?: Promise<void>;
   private operation?: Promise<void>;
   private epoch = 0;
+  private refreshedMemory?: { characterId?: string; revision: number };
   constructor(
     readonly home: string,
     private readonly openAgent = openCompanion,
@@ -100,13 +108,15 @@ export class Controller {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
-  private refresh() {
-    const id = this.state.character?.id;
-    this.update({
-      facts: id ? this.memory.facts(id) : [],
-      sessions: id ? this.memory.sessions(id) : [],
-      pending: id ? this.memory.pending(id).length : 0,
-    });
+  private refresh(patch: Partial<AppState> = {}) {
+    const id = (patch.character ?? this.state.character)?.id;
+    const revision = this.memory.revision;
+    if (this.refreshedMemory?.characterId !== id || this.refreshedMemory?.revision !== revision) {
+      patch.facts = id ? this.memory.facts(id) : [];
+      patch.pending = id ? this.memory.pending(id).length : 0;
+      this.refreshedMemory = { characterId: id, revision };
+    }
+    this.update({ ...patch, sessions: id ? this.memory.sessions(id) : [] });
   }
   report(error: unknown) {
     this.update({ notice: error instanceof Error ? error.message : String(error) });
@@ -143,10 +153,9 @@ export class Controller {
     const epoch = ++this.epoch;
     await this.companion?.close();
     this.companion = undefined;
-    this.update({ character, session, view: emptyView() });
     this.memory.setSetting("activeCharacter", character.id);
     this.memory.setSetting(`session:${character.id}`, session.id);
-    this.refresh();
+    this.refresh({ character, session, view: emptyView() });
     await mkdir(join(this.home, "sessions"), { recursive: true, mode: 0o700 });
     this.companion = await this.openAgent({
       graphical: this.graphical,
@@ -159,8 +168,7 @@ export class Controller {
       onChange: (view) => {
         if (epoch === this.epoch && !this.closed) {
           session = this.memory.sessions(character.id).find((s) => s.id === session.id)!;
-          this.update({ view, session });
-          this.refresh();
+          this.refresh({ view, session });
         }
       },
       onError: (error) => {
@@ -179,6 +187,13 @@ export class Controller {
     this.refresh();
   }
   execute(input: string, options: { throwOnError?: boolean } = {}): Promise<void> {
+    return this.perform(() => this.run(input.trim()), options);
+  }
+  /** Serialize graphical mutations with chat, sync and session restoration. */
+  private perform(
+    work: () => Promise<void>,
+    options: { throwOnError?: boolean } = {},
+  ): Promise<void> {
     if (this.closed || this.closing)
       return options.throwOnError
         ? Promise.reject(new Error("Loadstone is closing."))
@@ -189,17 +204,82 @@ export class Controller {
       return options.throwOnError ? Promise.reject(new Error(message)) : Promise.resolve();
     }
     this.update({ processing: true });
-    this.operation = this.run(input.trim())
+    this.operation = work()
       .catch((error) => {
         this.report(error);
         if (options.throwOnError) throw error;
       })
       .finally(() => {
         this.operation = undefined;
-        this.update({ processing: false });
-        this.refresh();
+        this.refresh({ processing: false });
       });
     return this.operation;
+  }
+  playerAction(action: PlayerAction): Promise<void> {
+    return this.perform(
+      async () => {
+        if (this.state.view.busy) throw new Error("Cancel current work first.");
+        const character = this.state.character;
+        if (!character) throw new Error("Select a character first.");
+        switch (action.type) {
+          case "resume": {
+            const session = this.memory
+              .sessions(character.id)
+              .find((item) => item.id === action.id);
+            if (!session) throw new Error("Session not found for this character.");
+            await this.activate(character, session);
+            this.update({
+              notice: "Conversation restored. Character memory is shared across conversations.",
+            });
+            break;
+          }
+          case "review": {
+            const receipt = this.memory.review(character.id, action.id, action.accept);
+            this.update({
+              notice:
+                receipt.status === "saved"
+                  ? "Update approved and saved."
+                  : "Update rejected; saved memory is unchanged.",
+            });
+            break;
+          }
+          case "undo":
+            this.memory.undo(character.id, action.id);
+            this.update({
+              notice:
+                "Update undone. Original provenance restored; the undo is recorded in history.",
+            });
+            break;
+          case "edit": {
+            const receipt = this.memory.apply({
+              characterId: character.id,
+              operationId: `manual:${randomUUID()}`,
+              source: "user",
+              observedAt: Date.now(),
+              evidence: "Explicit correction in desktop memory controls",
+              changes: [action.change],
+            });
+            this.update({
+              notice:
+                receipt.status === "review"
+                  ? "Correction needs review. Inspect the before/after values in Memory review."
+                  : "Correction saved. You can undo it in Memory history.",
+            });
+            break;
+          }
+          case "plan":
+            if (!this.companion) throw new Error("Open a conversation first.");
+            await this.companion.send(`/plan ${action.target}`);
+            this.nameCurrentSession(`/plan ${action.target}`);
+            this.update({
+              notice:
+                "Researching prerequisites. Saved plans appear in Goals and plans; automatic saves are recorded in Memory history.",
+            });
+            break;
+        }
+      },
+      { throwOnError: true },
+    );
   }
   private async run(input: string) {
     if (!input) return;
@@ -281,7 +361,11 @@ export class Controller {
     }
     if (command === "/earlier") {
       await this.companion?.earlier();
-      this.update({ notice: "Earlier history loaded. PageUp scrolls through it." });
+      this.update({
+        notice: this.graphical
+          ? "Earlier messages loaded."
+          : "Earlier history loaded. PageUp scrolls through it.",
+      });
       return;
     }
     if (command === "/retry") {
@@ -305,7 +389,9 @@ export class Controller {
         this.memory.createSession(character.id);
       await this.activate(character, session);
       this.update({
-        notice: `Selected ${character.name} (${character.mode}). /sync imports available progress. /help shows controls.`,
+        notice: this.graphical
+          ? `Selected ${character.name} (${character.mode}). Sync RuneMetrics imports available progress.`
+          : `Selected ${character.name} (${character.mode}). /sync imports available progress. /help shows controls.`,
       });
       return;
     }
@@ -349,7 +435,7 @@ export class Controller {
       this.memory.setSetting("provider", provider);
       this.memory.setSetting("model", modelId);
       this.update({
-        notice: `Model: ${provider}/${modelId}. Use /auth for credential status.`,
+        notice: `Model: ${provider}/${modelId}.${this.graphical ? "" : " Use /auth for credential status."}`,
       });
       return;
     }
@@ -426,7 +512,9 @@ export class Controller {
         await this.memory.backup(join(directory, "memory.sqlite"));
         await cp(join(this.home, "sessions"), join(directory, "sessions"), { recursive: true });
         this.update({
-          notice: `Backup saved to ${directory}. Restore into an empty LOADSTONE_HOME while the app is closed.`,
+          notice: this.graphical
+            ? `Backup saved to ${directory}. Contains private memory and conversations, not credentials. Keep this folder intact. Restoration currently requires the documented offline recovery procedure; there is no in-app restore yet.`
+            : `Backup saved to ${directory}. Restore into an empty LOADSTONE_HOME while the app is closed.`,
         });
       } finally {
         if (session) await this.activate(character, session);

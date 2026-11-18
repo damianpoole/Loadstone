@@ -267,10 +267,89 @@ try {
   await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
   await page.getByText("Smoke test fixture", { exact: true }).waitFor();
   await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
-  await page.getByText("Hello Loadstone", { exact: true }).waitFor();
+  await page
+    .getByLabel("Conversation messages")
+    .getByText("Hello Loadstone", { exact: true })
+    .waitFor();
   const restored = await page.evaluate(() => window.loadstone.snapshot());
   assert.equal(restored.session.id, snapshot.session.id);
   assert.equal(restored.facts[0].value, 90);
+  // Browser clipboard access remains write-only; confirm the actual native clipboard changed.
+  assert.equal(
+    await page.evaluate(
+      async () => (await navigator.permissions.query({ name: "clipboard-read" })).state,
+    ),
+    "denied",
+  );
+  const chat = page.getByLabel("Conversation messages");
+  for (const message of ["Hello Loadstone", "Hello from packaged Loadstone."]) {
+    await chat
+      .getByRole("article")
+      .filter({ has: page.getByText(message, { exact: true }) })
+      .getByRole("button", { name: "Copy message", exact: true })
+      .click();
+    const copied = await application.evaluate(async ({ clipboard }, expected) => {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if ((await clipboard.readText()) === expected) return true;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return false;
+    }, message);
+    assert.equal(copied, true, `Copy message should write ${message} to the clipboard`);
+  }
+  // Player-facing forms, not command strings: correction, review, undo and session resume.
+  await page.getByRole("button", { name: "Correct herblore", exact: true }).click();
+  await page.getByLabel("Correct herblore (JSON value)").fill("91");
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await page.waitForFunction(async () => (await window.loadstone.snapshot()).facts[0].value === 91);
+  await page.getByText("Memory history", { exact: true }).click();
+  await page.getByRole("button", { name: "Undo update…", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm undo", exact: true }).click();
+  await page.waitForFunction(async () => (await window.loadstone.snapshot()).facts[0].value === 90);
+  await page.getByRole("button", { name: "Correct herblore", exact: true }).click();
+  await page.getByLabel("Correct herblore (JSON value)").fill("80");
+  await page.getByRole("button", { name: "Save correction", exact: true }).click();
+  await page.getByRole("button", { name: "Reject update", exact: true }).click();
+  assert.equal((await page.evaluate(() => window.loadstone.snapshot())).facts[0].value, 90);
+  const composer = page.getByLabel("Message", { exact: true });
+  const newConversation = page.getByRole("button", { name: "New conversation", exact: true });
+  const conversationSearch = page.getByLabel("Find conversation");
+  const resume = page.getByRole("button", { name: "Resume conversation", exact: true });
+  await composer.fill("/invalid draft for the original conversation");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Use desktop controls instead of slash commands." })
+    .waitFor();
+  assert.equal(await composer.inputValue(), "/invalid draft for the original conversation");
+  await newConversation.click();
+  await page.getByText(/Conversations \(2\)/).click();
+  assert.equal(await composer.inputValue(), "");
+  await composer.fill("Draft for the new conversation");
+  await conversationSearch.fill("Hello Loadstone");
+  await resume.click();
+  await chat.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
+  assert.equal(await composer.inputValue(), "/invalid draft for the original conversation");
+  await conversationSearch.fill("");
+  await resume.click();
+  await page.waitForFunction(
+    () => document.querySelector("#message")?.value === "Draft for the new conversation",
+  );
+  await conversationSearch.fill("Hello Loadstone");
+  await resume.click();
+  await chat.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
+  assert.equal(
+    (await page.evaluate(() => window.loadstone.snapshot())).session.id,
+    snapshot.session.id,
+  );
+  await page.getByLabel("Text size").selectOption("150");
+  await page.getByText("Export and backup", { exact: true }).click();
+  await page.getByRole("button", { name: "Export character JSON", exact: true }).click();
+  await page.getByText(/Exported character facts and history to/).waitFor();
+  await page.getByRole("button", { name: "Back up all characters and chats", exact: true }).click();
+  await page.getByText(/Backup saved to/).waitFor();
+  await page.reload();
+  await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
   await application.close();
   running = undefined;
   const release = await lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 });

@@ -35,7 +35,7 @@ export interface AgentView {
   model?: ModelRef;
   hasEarlier: boolean;
 }
-export function entryMessages(entry: EntryRecord): ChatMessage[] {
+export function entryMessages(entry: EntryRecord, graphical = false): ChatMessage[] {
   if (entry.kind === "pi.system") return [];
   return (entry.model ?? []).flatMap<ChatMessage>((message, index) => {
     if (message.role === "system") return [];
@@ -62,8 +62,9 @@ export function entryMessages(entry: EntryRecord): ChatMessage[] {
             id: string;
             changes: { key: string; after: { value: unknown } | null }[];
           };
-          detail =
-            message.toolName === "save_character_plan"
+          detail = graphical
+            ? `${receipt.status === "saved" ? "Saved automatically" : "Not saved — review required"}: ${receipt.changes.map((c) => `${c.key} → ${JSON.stringify(c.after?.value ?? null)}`).join(", ")}\nOperation: ${receipt.id}. Inspect Memory history / Memory review${message.toolName === "save_character_plan" ? " and Goals and plans" : ""}. Saved updates can be undone in Memory history.`
+            : message.toolName === "save_character_plan"
               ? `${receipt.status === "saved" ? "Saved plan and goals" : "Not saved — review required"}. Inspect /goals for steps.\nOperation: ${receipt.id} (/history, /undo ID, /pending)`
               : `${receipt.status === "saved" ? "Saved" : "Not saved — review required"}: ${receipt.changes.map((c) => `${c.key} → ${JSON.stringify(c.after?.value ?? null)}`).join(", ")}\nOperation: ${receipt.id} (/history, /undo ID, /pending)`;
         } catch {
@@ -137,7 +138,9 @@ export async function openCompanion(options: {
       !options.memory.sessions(options.characterId).find((s) => s.id === options.sessionId)?.title
     ) {
       const first = await root.entries({ order: "ascending" }, 50, undefined, BACKGROUND_CONTEXT);
-      const opening = first.items.flatMap(entryMessages).find((message) => message.role === "You");
+      const opening = first.items
+        .flatMap((entry) => entryMessages(entry))
+        .find((message) => message.role === "You");
       if (opening) options.memory.nameSession(options.characterId, options.sessionId, opening.text);
     }
     const watch = await root.watch(BACKGROUND_CONTEXT);
@@ -172,7 +175,7 @@ export async function openCompanion(options: {
                   : message,
               ),
             };
-            return entryMessages(safeEntry);
+            return entryMessages(safeEntry, true);
           }),
         partial:
           live?.generation?.message?.content

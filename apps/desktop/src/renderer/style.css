@@ -46,14 +46,14 @@ textarea {
   resize: vertical;
 }
 h1 {
-  font-size: 26px;
+  font-size: 1.73em;
   margin: 0 0 8px;
 }
 h2 {
-  font-size: 19px;
+  font-size: 1.27em;
 }
 small {
-  font-size: 12px;
+  font-size: 0.85em;
   color: #b5c4d4;
 }
 h1 small {
@@ -65,7 +65,7 @@ label {
 }
 .layout {
   display: grid;
-  grid-template-columns: 310px minmax(0, 1fr);
+  grid-template-columns: minmax(310px, 30%) minmax(0, 1fr);
   height: 100vh;
 }
 aside {
@@ -127,7 +127,7 @@ header h2 {
 }
 .message.tool {
   background: #28313b;
-  font-size: 13px;
+  font-size: 0.93em;
 }
 .message p:last-child {
   margin-bottom: 0;
@@ -153,7 +153,7 @@ th {
   max-height: 150px;
   overflow: auto;
   white-space: pre-wrap;
-  font-size: 13px;
+  font-size: 0.93em;
 }
 [role="alert"] {
   color: #ffb8ae;
@@ -164,9 +164,45 @@ th {
 }
 footer {
   padding: 0 24px 14px;
-  font-size: 12px;
+  font-size: 0.85em;
   color: #b5c4d4;
 }
 .muted {
   color: #b5c4d4;
+}
+.goals {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+.copy {
+  float: right;
+  font-size: 0.85em;
+}
+.skip-link {
+  position: absolute;
+  left: -10000px;
+}
+.skip-link:focus {
+  left: 12px;
+  top: 12px;
+  padding: 12px;
+  background: #19222d;
+  color: #78d8cd;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+  aside {
+    padding: 16px;
+  }
 }

@@ -4,6 +4,7 @@ import { channels } from "./protocol";
 
 const api: DesktopAPI = {
   snapshot: () => ipcRenderer.invoke(channels.snapshot),
+  memory: () => ipcRenderer.invoke(channels.memory),
   request: (request) => ipcRenderer.invoke(channels.request, request),
   subscribe(listener) {
     const handler = (_event: unknown, state: DesktopSnapshot) => listener(state);

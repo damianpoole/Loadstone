@@ -59,6 +59,14 @@ writes), or stay offline. Model selection includes catalog cost estimates. Memor
 RuneMetrics sync work without authentication. The packaged app bundles its runtime and does not
 require players to install Node or pi.
 
+Use the sidebar to correct saved facts, approve/reject proposed changes, inspect
+provenance and undo saved operations. Conversations are searchable and resumable;
+goals/plans, character modes, JSON export and all-character/chat backup controls
+are available. Exports/backups contain private data, not credentials. In-app restore
+and data-folder migration are not available yet; keep backups intact and use the
+documented offline recovery procedure. This remains an internal preview, not a
+completed accessibility/performance-validated public release.
+
 See [Desktop architecture and delivery plan](docs/desktop.md) for packaging,
 tests, current limitations, and acceptance criteria for the remaining slices.
 `pnpm run desktop:make` builds **unsigned internal preview** installers; the desktop
