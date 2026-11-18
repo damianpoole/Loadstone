@@ -22,25 +22,39 @@
     "@loadstone/application": "workspace:*",
     "@loadstone/tsconfig": "workspace:*",
     "@types/node": "^24.0.0",
-    "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "electron": "45.2.1",
     "electron-builder": "26.18.0",
+    "electron-updater": "6.8.11",
     "playwright-core": "1.61.1",
     "proper-lockfile": "^4.1.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "yaml": "2.9.0"
   },
   "build": {
     "appId": "dev.loadstone.desktop",
     "productName": "Loadstone",
     "asar": true,
+    "icon": "packaging/icon.svg",
+    "publish": null,
+    "copyright": "Copyright © Loadstone contributors",
+    "extraResources": [
+      {
+        "from": "dist",
+        "to": "third-party-notices",
+        "filter": [
+          "**/*.NOTICES.txt"
+        ]
+      }
+    ],
     "files": [
       "dist/**",
+      "!dist/**/*.NOTICES.txt",
       "package.json"
     ],
     "directories": {
@@ -57,6 +71,7 @@
       ]
     },
     "nsis": {
+      "include": "packaging/no-force-close.nsh",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

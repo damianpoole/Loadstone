@@ -191,19 +191,36 @@ package-install `engines` field.
 
 For this slice the default remains `~/.loadstone`, overridden by `LOADSTONE_HOME`.
 This gives existing users their characters and conversations without an automatic
-copy/migration. Desktop and TUI both take the **same `.tui.lock` directory lock**
-before opening SQLite. A second instance must refuse to open that home. Separate
-homes can be used for independent previews. Do not delete a live lock manually.
+copy/migration. Desktop and TUI take the same OS-backed lease in `.home-owner.sqlite`
+before opening character data, and keep a nonempty `.tui.lock` directory to exclude
+legacy clients. A suspended process does not lose its lease; the OS releases it
+on exit. Separate homes can be used for independent previews. Never delete these
+lock files while an instance could still be running.
 
 Closing the desktop waits for controller shutdown and durable storage closure,
 then releases ownership. Closing may wait for an in-flight auth/network operation;
-force-quitting instead leaves recovery to SQLite/pi-durable and the stale-lock
-heartbeat policy. Main-process crashes are not guaranteed graceful shutdowns.
+force-quitting leaves recovery to SQLite/pi-durable. Relaunch with the current
+app to recover a marked lock left by a crash. Main-process crashes are not guaranteed graceful shutdowns.
 
-This slice does not change the database schema or create migration backups. The
-memory store rejects a newer schema. Before distributing schema/runtime upgrades,
-implement the backup/compatibility policy in slice 4 below. Do not assume an older
-application can reopen a database migrated by a newer pi-durable version.
+Desktop and TUI check memory (`PRAGMA user_version`) and every saved conversation
+(pi-durable's `durable_schema`) under the shared lock, before opening writable
+storage. Both current schemas are version 2, with the pinned pi-durable 1.4.0 runtime.
+Unsupported newer or unrecognized formats stop startup, including in inactive chats.
+Before an existing database is migrated, Loadstone makes and verifies a complete
+SQLite backup of memory and sessions, including committed WAL pages. The process
+writes a `backup.json` manifest and publishes `backups/pre-migration-*` only after
+all copies complete. No migrations start if the snapshot fails. Credentials are not
+copied or changed by migration. New homes and already-compatible data do not need
+pre-migration snapshots.
+
+Each database migration is atomic, but the collection is not one transaction. If an
+upgrade is interrupted, keep the earliest complete pre-migration snapshot; retrying
+can finish the remaining migrations or create another snapshot of the intermediate
+state. Ignore any `.partial-*` backup directory. A storage maintenance worker keeps
+the UI responsive during scans/migrations. It checks lock ownership
+before publishing snapshots and before each migration. See [offline recovery](ironman-tui.md#storage-backup-and-privacy) before
+attempting a rollback. The schema number alone does not prove runtime compatibility;
+review the pin, record encoding and auth SDK behavior on every runtime upgrade.
 
 ## Packaging and validation
 
@@ -385,7 +402,7 @@ progress. New-character mode selection never changes an existing character's mod
 Use **Export and backup** in the sidebar. Export contains facts and memory audit
 history, not conversation text. Backup contains all character memory and session
 SQLite files: the backend closes the durable companion, uses SQLite's backup API for
-memory, copies closed session files, then reopens the companion even if copying fails.
+memory, uses SQLite's backup API for closed session databases too, then reopens the companion even if snapshotting fails.
 Output paths appear in Status under the current data home's `exports/` or `backups/`.
 Neither includes credentials. A character JSON export is **not** a restorable chat
 backup. Until graphical restore ships, follow the [offline recovery procedure](ironman-tui.md#storage-backup-and-privacy)
@@ -404,25 +421,22 @@ GUI and understand what is local, what was synced, and what goes to an AI provid
 
 ### Slice 4 — safe releases and upgrades
 
-- [ ] Decide release identity/domain, OS minimums/architectures and preview/stable
-      channels. Add icons, product metadata and project/license policy.
-- [ ] Generate third-party license notices for **bundled** dependencies/assets;
-      do not assume a bundled application automatically includes those notices.
-- [ ] Windows code signing; macOS signing, hardened-runtime entitlements and
-      notarization. Establish protected signing secrets and trusted release workflows.
-- [ ] Integrate a maintained Electron updater matched to builder's installer formats;
-      define authenticated release metadata, artifact verification and hosting.
-- [ ] Download updates without interrupting chat; install only after storage closes.
-      Prevent concurrent TUI access during first-open migration as well as normal use.
-- [ ] Before any schema migration, create consistent, restorable backups of BOTH
-      memory and durable-session databases; do not copy live WAL files naively.
-- [ ] Maintain explicit schema/runtime compatibility, test interrupted upgrades,
-      disk-full/failed downloads, and refuse unsupported downgrades. App rollback is
-      not database rollback; restoration can discard newer progress and needs consent.
-- [ ] Installer/uninstaller tests with spaces, non-admin users and existing data;
-      never delete character data by default. Validate on machines with no dev tools.
-- [ ] Electron dependency/security update policy, disabled-by-default or explicitly
-      disclosed diagnostics, redacted logs, and a dependency/security review.
+See [the desktop release runbook](desktop-release.md) for channel policy, signing
+setup, release verification and the public distribution gate.
+
+- [x] Define release identity, target architectures/OSes and preview/stable channels;
+      add product icon/metadata and document the project's current license policy.
+- [x] Generate and ship notices for bundled JavaScript and the Electron runtime.
+- [x] Add protected signed-candidate workflow, hardened runtime and notarization
+      configuration. Distribution is still blocked pending credential provisioning.
+- [x] Stable-only updater: user-initiated checks, background download, payload and
+      platform signature verification, explicit confirmation and shutdown gate.
+- [x] Shared preflight with migration backups of both SQLite stores; incompatible
+      schemas fail closed. Cover interrupted migration, failed staging and disk-full
+      backup via tests. App rollback is not data rollback.
+- [ ] Provision signing environments, review distribution rights/notices and record
+      signed end-to-end update, non-admin install/uninstall and recovery acceptance
+      on clean Windows/macOS machines without developer tools.
 - [ ] Validate Linux separately before advertising support.
 
 **Acceptance:** signed installation and an upgrade preserve character progress,

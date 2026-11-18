@@ -9,12 +9,21 @@ import {
   type IpcMainInvokeEvent,
   type WebContents,
 } from "electron";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import lockfile from "proper-lockfile";
-import { Controller, DesktopService, DesktopAuth } from "@loadstone/application";
+import {
+  Controller,
+  DesktopService,
+  DesktopAuth,
+  acquireHomeLease,
+  storageWorker,
+  StorageUpgradeError,
+} from "@loadstone/application";
+import { setupReleaseMenu } from "./release-menu";
+import { closeForExit, PendingRequests } from "./updates";
+import { acquireInstallationLease } from "./install-lease";
 import { channels } from "./protocol";
 import { contentSecurityPolicy, trustedFrame } from "./security";
 
@@ -24,60 +33,101 @@ const ozone = process.env.LOADSTONE_OZONE_PLATFORM;
 if (process.platform === "linux" && (ozone === "x11" || ozone === "wayland"))
   app.commandLine.appendSwitch("ozone-platform", ozone);
 let startupStage = "Electron initialization";
+let startupFailure: string | undefined;
 let controller: Controller | undefined;
 let authentication: DesktopAuth | undefined;
 let release: (() => Promise<void>) | undefined;
 let unsubscribe: (() => void) | undefined;
 let closing = false;
 let closed = false;
+let installAfterClose = false;
+let install: (() => Promise<void>) | undefined;
+let installation: Awaited<ReturnType<typeof acquireInstallationLease>> | undefined;
+let storage: Awaited<ReturnType<typeof storageWorker>> | undefined;
+let lockCompromised = false;
+const requests = new PendingRequests();
 
 app.on("before-quit", (event) => {
   if (closed) return;
   event.preventDefault();
   if (closing) return;
   closing = true;
+  authentication?.cancel();
+  controller?.abortSync();
   void (async () => {
-    try {
-      unsubscribe?.();
-      await authentication?.close();
-      await controller?.close();
-    } catch {
-      console.error(
-        "[Loadstone] Storage did not close cleanly. Reopen the app to recover durable work.",
-      );
-      dialog.showErrorBox(
-        "Loadstone shutdown",
-        "Storage could not close cleanly. Reopen Loadstone to recover durable work.",
-      );
-    } finally {
-      await release?.().catch(() => {});
-      closed = true;
-      app.quit();
+    await startup;
+    unsubscribe?.();
+    const clean = await closeForExit(
+      [() => authentication?.close(), () => requests.drain(), () => controller?.close()],
+      () => (lockCompromised ? undefined : release?.()),
+    );
+    if (!clean || lockCompromised) {
+      console.error("[Loadstone] Local storage did not shut down cleanly.");
+      // An asynchronous dialog keeps the lease heartbeat running after a failed close.
+      await dialog
+        .showMessageBox({
+          type: "error",
+          title: "Loadstone shutdown",
+          message: lockCompromised
+            ? "Exclusive access to character storage was lost. Loadstone will close without installing an update."
+            : "Local storage did not shut down cleanly. No update was installed. Reopen Loadstone to recover durable work.",
+        })
+        .catch(() => {});
     }
+    if (startupFailure && !lockCompromised) {
+      await dialog
+        .showMessageBox({
+          type: "error",
+          title: "Loadstone could not start",
+          message: startupFailure,
+        })
+        .catch(() => {});
+    }
+    closed = true;
+    if (clean && !startupFailure && !lockCompromised && installAfterClose && install)
+      await install();
+    else app.quit();
   })();
 });
 app.on("window-all-closed", () => app.quit());
 
 async function main() {
   await app.whenReady();
+  if (
+    app.isPackaged &&
+    process.platform === "win32" &&
+    (await stat(join(process.resourcesPath, "loadstone-stable.json")).catch(() => undefined))
+  ) {
+    try {
+      installation = await acquireInstallationLease(
+        join(app.getPath("home"), ".loadstone-installations"),
+        process.execPath,
+      );
+    } catch {
+      // No character or credential stores have been opened. Do not linger and
+      // keep the application's executable mapped while the installer runs.
+      console.error("[Loadstone] This installation is already open or being updated.");
+      app.exit(1);
+      return;
+    }
+  }
   const home = resolve(process.env.LOADSTONE_HOME ?? join(homedir(), ".loadstone"));
   startupStage = "storage directory setup";
   await mkdir(home, { recursive: true, mode: 0o700 });
   // Same ownership protocol as the TUI. Never open SQLite before acquiring it.
   startupStage = "storage lock acquisition";
-  release = await lockfile.lock(home, {
-    lockfilePath: join(home, ".tui.lock"),
-    stale: 30_000,
-    retries: 0,
-    onCompromised: () => {
-      console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
-      dialog.showErrorBox(
-        "Loadstone storage lock",
-        "Exclusive access to character storage was lost. Loadstone will close to protect your data.",
-      );
-      app.quit();
-    },
+  release = await acquireHomeLease(home, () => {
+    lockCompromised = true;
+    storage?.invalidate();
+    console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
+    app.quit();
   });
+  startupStage = "storage compatibility check";
+  const maintenance = await storageWorker(home, join(__dirname, "storage-worker.cjs"));
+  storage = maintenance;
+  if (lockCompromised) maintenance.invalidate();
+  const backup = await maintenance.prepare();
+  if (closing) return;
   startupStage = "character memory setup";
   const encryptionAvailable = () =>
     safeStorage.isEncryptionAvailable() &&
@@ -100,8 +150,10 @@ async function main() {
     (url) => shell.openExternal(url),
   );
   await authentication.initialize();
+  await maintenance.assertOwned();
+  if (closing) return;
   const auth = authentication;
-  controller = new Controller(home, undefined, () => auth.connection(), true);
+  controller = new Controller(home, undefined, () => auth.connection(), true, maintenance);
   const service = new DesktopService(controller, auth, async (url) => {
     const { response } = await dialog.showMessageBox({
       type: "question",
@@ -117,8 +169,9 @@ async function main() {
   });
   controller.state = {
     ...controller.state,
-    notice:
-      "Select or create a character to begin. Your last conversation resumes automatically. Memory is local; chat context is sent to your selected AI provider. Never paste credentials into chat.",
+    notice: backup
+      ? `Local storage upgraded. Pre-upgrade backup: ${backup}`
+      : "Select or create a character to begin. Your last conversation resumes automatically. Memory is local; chat context is sent to your selected AI provider. Never paste credentials into chat.",
   };
 
   const renderer = pathToFileURL(join(__dirname, "renderer", "index.html")).href;
@@ -186,7 +239,7 @@ async function main() {
   });
   ipcMain.handle(channels.request, async (event, request: unknown) => {
     authorize(event);
-    await service.request(request);
+    await requests.track(service.request(request));
   });
   unsubscribe = service.subscribe((snapshot) => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed())
@@ -226,18 +279,28 @@ async function main() {
   startupStage = "renderer loading";
   await window.loadURL(renderer);
   console.log("[Loadstone] Desktop window loaded.");
+  if (!closing) {
+    install = await setupReleaseMenu(
+      () => !closing,
+      installation,
+      () => {
+        installAfterClose = true;
+        app.quit();
+      },
+    );
+  }
   await initialization;
 }
 
-void main().catch((error: unknown) => {
-  console.error(`[Loadstone] Startup failed during ${startupStage}:`, error);
+const startup = main().catch((error: unknown) => {
+  console.error(`[Loadstone] Startup failed during ${startupStage}.`);
   process.exitCode = 1;
-  const locked = (error as NodeJS.ErrnoException).code === "ELOCKED";
-  dialog.showErrorBox(
-    "Loadstone could not start",
-    locked
-      ? "This character directory is already open in Loadstone desktop or the TUI. Close the other app first."
-      : "Loadstone could not open its local storage or application resources. Check permissions and the LOADSTONE_HOME setting. Your data has not been deleted.",
-  );
+  const locked = error instanceof Error && "code" in error && error.code === "ELOCKED";
+  startupFailure =
+    error instanceof StorageUpgradeError
+      ? error.message
+      : locked
+        ? "This character directory is already open in Loadstone desktop or the TUI. Close the other app first."
+        : "Loadstone could not open its local storage or application resources. Check permissions and the LOADSTONE_HOME setting. Your data has not been deleted.";
   app.quit();
 });

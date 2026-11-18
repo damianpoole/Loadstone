@@ -229,6 +229,46 @@ describe("TUI commands", () => {
     expect(controller.state.notice).toBe("offline");
     expect(controller.state.processing).toBe(false);
   });
+  it("aborts admitted network sync without closing stores or the durable chat", async () => {
+    await controller.execute("/character MyIron");
+    const started = Promise.withResolvers<void>();
+    vi.mocked(syncCharacter).mockImplementationOnce((_memory, _character, _operation, signal) => {
+      started.resolve();
+      return new Promise((_resolve, reject) =>
+        signal?.addEventListener("abort", () => reject(new Error("Sync cancelled")), {
+          once: true,
+        }),
+      );
+    });
+    const pending = controller.execute("/sync");
+    await started.promise;
+    controller.abortSync();
+    await pending;
+    expect(controller.state.notice).toContain("Sync cancelled");
+    expect(agent.close).not.toHaveBeenCalled();
+    expect(controller.memory.characters()).toHaveLength(1);
+  });
+
+  it("does not reopen a durable session if ownership is lost during a desktop backup", async () => {
+    await controller.close();
+    let owned = true;
+    controller = new Controller(home, open, undefined, true, {
+      assertOwned: async () => {
+        if (!owned) throw new Error("Ownership lost");
+      },
+      backup: async () => {
+        owned = false;
+        throw new Error("Ownership lost");
+      },
+    });
+    await controller.execute("/character MyIron");
+    await expect(controller.execute("/backup", { throwOnError: true })).rejects.toThrow(
+      "Ownership lost",
+    );
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(agent.close).toHaveBeenCalledTimes(1);
+  });
+
   it("exports private character JSON and creates a restorable all-session backup", async () => {
     await controller.execute("/character MyIron");
     await controller.execute('/set goal Unlock Invention = "active"');

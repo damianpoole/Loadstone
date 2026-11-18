@@ -20,6 +20,13 @@ import type { MemoryStore } from "@loadstone/memory";
 import { characterExtension } from "./tools";
 export { syncCharacter, characterSummary } from "./tools";
 export type { ModelRef };
+export { CURRENT_SQLITE_SCHEMA_VERSION as SESSION_SCHEMA_VERSION } from "@earendil-works/pi-durable/storage/sqlite";
+
+/** Run the SDK's atomic migrations without opening a harness or using credentials. */
+export async function migrateSessionStorage(path: string) {
+  const storage = await openNodeSqliteStorage(path);
+  await storage.close(BACKGROUND_CONTEXT);
+}
 
 export interface ChatMessage {
   id: string;
@@ -316,8 +323,11 @@ export async function openCompanion(options: {
       },
       async close() {
         closed = true;
-        await watch.stop();
-        await harness.close(BACKGROUND_CONTEXT);
+        try {
+          await watch.stop();
+        } finally {
+          await harness.close(BACKGROUND_CONTEXT);
+        }
       },
     };
   } catch (error) {

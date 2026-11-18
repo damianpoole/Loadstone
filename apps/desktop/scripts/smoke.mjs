@@ -1,8 +1,10 @@
 // Runs the real Electron renderer with isolated data and mocked provider transport.
 // LOADSTONE_SMOKE_EXECUTABLE points at an unpacked/installed app to test packaging.
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,15 +49,15 @@ const env = {
 };
 delete env.ELECTRON_RUN_AS_NODE;
 let running;
-const launch = async () => {
+const launch = async (testHome = home) => {
   const application = await _electron.launch({
     executablePath: executable || electronPath,
     args: [
       ...(executable ? [] : [appDirectory]),
-      `--user-data-dir=${join(home, "desktop-profile")}`,
+      `--user-data-dir=${join(testHome, "desktop-profile")}`,
     ],
-    cwd: home,
-    env,
+    cwd: testHome,
+    env: { ...env, LOADSTONE_HOME: testHome },
     timeout: 30000,
   });
   running = application;
@@ -76,7 +78,63 @@ try {
     true,
     "startup window is visible",
   );
-  if (executable) assert.equal(runtime.packaged, true);
+  if (executable) {
+    assert.equal(runtime.packaged, true);
+    const resources = await application.evaluate(() => process.resourcesPath);
+    const notices = join(resources, "third-party-notices");
+    assert.match(
+      await readFile(join(notices, "main.cjs.NOTICES.txt"), "utf8"),
+      /electron-updater@/,
+    );
+    const rendererNotices = await readdir(join(notices, "renderer", "assets"));
+    assert.ok(rendererNotices.some((file) => file.endsWith(".NOTICES.txt")));
+    const runtimeNotices = process.platform === "darwin" ? resources : dirname(executable);
+    await readFile(join(runtimeNotices, "LICENSE.electron.txt"));
+    await readFile(join(runtimeNotices, "LICENSES.chromium.html"));
+    const expectsUpdates = process.env.LOADSTONE_SMOKE_EXPECT_UPDATES === "1";
+    if (expectsUpdates) {
+      assert.equal(
+        await application.evaluate(async ({ Menu }) => {
+          for (let i = 0; i < 40; i++) {
+            const menu = Menu.getApplicationMenu()?.items.find(({ label }) => label === "Updates");
+            if (menu?.submenu?.items[0].label === "Check for updates (GitHub)…") return true;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          return false;
+        }),
+        true,
+        "stable update menu is ready without a network request",
+      );
+      const requests = await application.evaluate(async ({ Menu, session }) => {
+        // Block all update transport in its separate Electron session. This tests
+        // the shipped GitHub provider and menu, not a mutable production feed.
+        const transport = session.fromPartition("electron-updater", { cache: false });
+        const urls = [];
+        transport.webRequest.onBeforeRequest((details, callback) => {
+          urls.push(details.url);
+          callback({ cancel: true });
+        });
+        try {
+          const item = () =>
+            Menu.getApplicationMenu()?.items.find(({ label }) => label === "Updates")?.submenu
+              ?.items[0];
+          item().click();
+          for (let i = 0; i < 100; i++) {
+            if (item()?.label === "Update failed — check again") return urls;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error("Expected the update failure menu to allow retry.");
+        } finally {
+          transport.webRequest.onBeforeRequest(null);
+        }
+      });
+      assert.ok(requests.length);
+      assert.ok(requests.every((url) => /^https:\/\/(api\.)?github\.com\//.test(url)));
+    } else {
+      await assert.rejects(readFile(join(resources, "loadstone-stable.json")), { code: "ENOENT" });
+      await assert.rejects(readFile(join(resources, "app-update.yml")), { code: "ENOENT" });
+    }
+  }
   assert.equal(await page.evaluate(() => typeof window.require), "undefined");
   assert.equal(await page.evaluate(() => typeof window.process), "undefined");
   assert.equal(
@@ -122,7 +180,6 @@ try {
       (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
   );
   if (encryptionAvailable) {
-    const { readFile } = await import("node:fs/promises");
     assert.equal(
       (await readFile(join(home, "credentials.enc"))).includes(
         Buffer.from("private-smoke-key-not-real"),
@@ -240,9 +297,37 @@ try {
     true,
     "IPC refuses legacy slash commands",
   );
-  await assert.rejects(lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 }), {
-    code: "ELOCKED",
-  });
+  const leasePath = join(home, ".tui.lock");
+  const ownerMarker = await readdir(leasePath);
+  assert.match(ownerMarker[0], /^loadstone-owner-v1-/);
+  await assert.rejects(lockfile.lock(home, { lockfilePath: leasePath, retries: 0 }));
+  assert.deepEqual(await readdir(leasePath), ownerMarker);
+  // Alter a copy, not the live lease: on macOS an older mtime can also change birthtime.
+  const stale = join(home, "legacy stale probe");
+  const staleLease = join(stale, ".tui.lock");
+  await mkdir(stale);
+  await cp(leasePath, staleLease, { recursive: true });
+  const mtime = new Date(Date.now() - 60_000);
+  await utimes(staleLease, mtime, mtime);
+  await assert.rejects(lockfile.lock(stale, { lockfilePath: staleLease, retries: 0 }));
+  assert.deepEqual(
+    await readdir(staleLease),
+    ownerMarker,
+    "legacy probe must not remove a stale marked guard",
+  );
+  if (process.env.LOADSTONE_SMOKE_NSIS_PATH) {
+    await assert.rejects(
+      promisify(execFile)(process.env.LOADSTONE_SMOKE_NSIS_PATH, ["/S", "--updated"], {
+        timeout: 25_000,
+      }),
+      { code: 2 },
+      "NSIS refuses a live binary instead of terminating the app",
+    );
+    assert.equal(
+      (await page.evaluate(() => window.loadstone.snapshot())).session.id,
+      snapshot.session.id,
+    );
+  }
   // Exercise the real window-close/before-quit lifecycle, not a forced process kill.
   const exited = once(application.process(), "exit", { signal: AbortSignal.timeout(30000) });
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
@@ -262,7 +347,10 @@ try {
   database
     .prepare("INSERT INTO facts VALUES (?, ?, ?, ?)")
     .run(snapshot.character.id, "skill", "herblore", JSON.stringify(fact));
+  // Simulate the preceding memory format alongside the real durable chat.
+  database.exec("ALTER TABLE sessions DROP COLUMN title; PRAGMA user_version=1;");
   database.close();
+  const credentials = await readFile(auth);
   ({ application, page } = await launch());
   await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
   await page.getByText("Smoke test fixture", { exact: true }).waitFor();
@@ -274,6 +362,16 @@ try {
   const restored = await page.evaluate(() => window.loadstone.snapshot());
   assert.equal(restored.session.id, snapshot.session.id);
   assert.equal(restored.facts[0].value, 90);
+  assert.equal(restored.connection.mode, "shared");
+  assert.deepEqual(await readFile(auth), credentials);
+  const [upgrade] = await readdir(join(home, "backups"));
+  assert.match(upgrade, /^pre-migration-/);
+  const backup = join(home, "backups", upgrade);
+  assert.deepEqual((await readdir(backup)).sort(), ["backup.json", "memory.sqlite", "sessions"]);
+  assert.deepEqual(await readdir(join(backup, "sessions")), [`${snapshot.session.id}.sqlite`]);
+  const oldMemory = new DatabaseSync(join(backup, "memory.sqlite"), { readOnly: true });
+  assert.equal(oldMemory.prepare("PRAGMA user_version").get().user_version, 1);
+  oldMemory.close();
   // Browser clipboard access remains write-only; confirm the actual native clipboard changed.
   assert.equal(
     await page.evaluate(
@@ -354,10 +452,26 @@ try {
   running = undefined;
   const release = await lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 });
   await release();
+
+  // Follow the offline restore recipe, keeping the backup and original home intact.
+  const recovery = join(home, "offline recovery");
+  await mkdir(recovery);
+  await cp(join(backup, "backup.json"), join(recovery, "backup.json"));
+  await cp(join(backup, "memory.sqlite"), join(recovery, "memory.sqlite"));
+  await cp(join(backup, "sessions"), join(recovery, "sessions"), { recursive: true });
+  ({ application, page } = await launch(recovery));
+  await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
+  await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
+  const recovered = await page.evaluate(() => window.loadstone.snapshot());
+  assert.equal(recovered.connection.mode, "offline", "snapshot does not restore credentials");
+  assert.equal(recovered.facts[0].value, 90);
+  assert.equal(recovered.session.id, snapshot.session.id);
+  await application.close();
+  running = undefined;
   console.log(
     "Desktop smoke passed:",
     runtime,
-    "— isolated renderer, pi SDK, memory, session restoration, lock release",
+    "— isolated renderer, legacy upgrade, offline restore, credentials, chat replay, lock release",
   );
 } finally {
   await running?.close();
