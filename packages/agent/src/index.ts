@@ -323,8 +323,11 @@ export async function openCompanion(options: {
       },
       async close() {
         closed = true;
-        await watch.stop();
-        await harness.close(BACKGROUND_CONTEXT);
+        try {
+          await watch.stop();
+        } finally {
+          await harness.close(BACKGROUND_CONTEXT);
+        }
       },
     };
   } catch (error) {

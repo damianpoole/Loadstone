@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { render } from "ink";
-import { prepareStorage } from "@loadstone/application";
+import { storageWorker } from "@loadstone/application";
 import lockfile from "proper-lockfile";
 import { App } from "./app";
 import { Controller, HELP } from "./controller";
@@ -22,10 +22,19 @@ async function main() {
   const home = resolve(process.env.LOADSTONE_HOME ?? join(homedir(), ".loadstone"));
   await mkdir(home, { recursive: true, mode: 0o700 });
   // pi-durable requires exclusive ownership. A heartbeat lock recovers after crashes.
+  let storage: Awaited<ReturnType<typeof storageWorker>> | undefined;
+  let lockCompromised = false;
   const release = await lockfile.lock(home, {
     lockfilePath: join(home, ".tui.lock"),
     stale: 30_000,
     retries: 0,
+    onCompromised: () => {
+      lockCompromised = true;
+      storage?.invalidate();
+      console.error("Exclusive storage ownership was lost. Closing Loadstone.");
+      process.exitCode = 1;
+      quit();
+    },
   });
   let controller: Controller | undefined;
   let instance: ReturnType<typeof render> | undefined;
@@ -49,9 +58,17 @@ async function main() {
   process.on("SIGINT", quit);
   process.stdout.write("\u001b[?1049h");
   try {
-    const backup = await prepareStorage(home);
+    const maintenance = await storageWorker(home, new URL("./storage-worker.js", import.meta.url));
+    storage = maintenance;
+    if (lockCompromised) maintenance.invalidate();
+    const backup = await maintenance.run("prepare");
+    await maintenance.assertOwned();
     if (closing) return;
-    controller = new Controller(home);
+    controller = new Controller(home, undefined, undefined, false, async () => {
+      const path = await maintenance.run("backup");
+      if (!path) throw new Error("No backup was created.");
+      return path;
+    });
     if (backup) controller.report(`Local storage upgraded. Pre-upgrade backup: ${backup}`);
     instance = render(<App controller={controller} onQuit={quit} />, {
       exitOnCtrlC: false,
@@ -65,9 +82,9 @@ async function main() {
     process.off("SIGINT", quit);
     try {
       await controller?.close();
+      if (!lockCompromised) await release();
     } finally {
       process.stdout.write("\u001b[?1049l");
-      await release();
     }
   }
 }

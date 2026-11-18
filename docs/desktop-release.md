@@ -39,10 +39,11 @@ rights and any obligations not captured by license texts before publishing.
    put signing credentials in repository-wide secrets, PR checks or local previews.
 2. macOS environment secrets: `MAC_CSC_LINK` (base64 Developer ID Application
    PKCS#12), `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY_B64` (base64 App Store Connect
-   `.p8`). Variables: `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. Use a scoped Apple
-   key that can notarize and keep the signing identity/Team ID stable. Builder
-   signs the hardened app and notarizes/staples it; the workflow independently
-   notarizes/staples the DMG and checks Gatekeeper.
+   `.p8`). Variables: `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`, `APPLE_TEAM_ID`. Use
+   a scoped Apple key that can notarize and keep the signing identity/Team ID
+   stable. Builder signs the hardened app and DMG, and notarizes/staples the app.
+   The workflow separately notarizes/staples the DMG and checks the expected
+   Developer ID team and Gatekeeper for both.
 3. Windows environment secret: `AZURE_CLIENT_SECRET`. Variables: `AZURE_CLIENT_ID`,
    `AZURE_TENANT_ID`, `SIGN_ENDPOINT`, `SIGN_ACCOUNT`, `SIGN_PROFILE`,
    `WINDOWS_PUBLISHER`. Give the service principal only the signer role for the
@@ -68,7 +69,8 @@ rights and any obligations not captured by license texts before publishing.
 Stable builds include **Updates → Check for updates (GitHub)** in the native menu.
 It contacts GitHub only on request. A new installer/ZIP downloads in the background
 without blocking chat. Installation requires a separate confirmation and only starts
-if credentials and storage close cleanly and the home lock is released. Normal quit
+if admitted requests (including credential writes) drain, both stores close
+cleanly, and the home lock is released. Normal quit
 never installs. There is no update IPC in the renderer. If fetching or staging fails,
 the current app stays usable; retry from the menu. If native installation fails after
 shutdown, reopen the existing app or reinstall the signed release manually.
@@ -78,7 +80,8 @@ The updater uses the fixed public GitHub release origin over TLS, with stable
 SHA-512; the metadata is not separately signed. Trust in GitHub's release origin,
 release permissions and tag protections is therefore part of the security model.
 Windows verifies Authenticode trust and the exact packaged publisher, failing closed
-when Windows cannot verify. macOS Squirrel additionally verifies the app's signing
+when Windows cannot verify. The installer path is checked even on cache hits and
+its digest and signing identity are rechecked just before launch. macOS Squirrel additionally verifies the app's signing
 identity before replacement. Prereleases and downgrades are disabled. Rotate signing
 credentials without changing identity, or plan a separately reviewed migration/manual
 install if identity changes.
@@ -96,7 +99,8 @@ forward version over reverting the feed; rolling back binaries cannot undo migra
 ## Release acceptance (must record before public distribution)
 
 - On a clean non-admin **Windows 11 x64** machine with no Node/pi/build tooling:
-  verify publisher, install under a path with spaces, open a home with data, upgrade,
+  verify publisher, install in the standard per-user location and exercise an NSIS
+  `/D=` path with spaces, open a home with data, upgrade,
   then uninstall and reinstall. Confirm character memory, chat and credentials remain.
 - On clean **macOS 14+ arm64**: download through a browser so Gatekeeper sees quarantine,
   verify DMG/app notarization, install as an ordinary user and repeat upgrade/reinstall.
@@ -117,7 +121,7 @@ forward version over reverting the feed; rolling back binaries cannot undo migra
 Automated coverage includes download-state failures and shutdown ordering, SQLite
 snapshots from both committed WAL and closed databases, disk-full injection,
 partial-migration retry and newer-schema rejection in inactive sessions. Desktop CI
-exercises a legacy memory upgrade with a real persisted chat and checks notices in
-packaged/installed builds. The signed workflow verifies candidate format/signatures
+exercises a legacy memory upgrade and offline restore into a separate home with a
+real persisted chat, and checks notices in packaged/installed builds. The signed workflow verifies candidate format/signatures
 only after credentials are provisioned. Public distribution remains blocked until
 actual signed install/update and clean-machine results are recorded.

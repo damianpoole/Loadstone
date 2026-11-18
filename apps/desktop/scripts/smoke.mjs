@@ -2,7 +2,7 @@
 // LOADSTONE_SMOKE_EXECUTABLE points at an unpacked/installed app to test packaging.
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,15 +47,15 @@ const env = {
 };
 delete env.ELECTRON_RUN_AS_NODE;
 let running;
-const launch = async () => {
+const launch = async (testHome = home) => {
   const application = await _electron.launch({
     executablePath: executable || electronPath,
     args: [
       ...(executable ? [] : [appDirectory]),
-      `--user-data-dir=${join(home, "desktop-profile")}`,
+      `--user-data-dir=${join(testHome, "desktop-profile")}`,
     ],
-    cwd: home,
-    env,
+    cwd: testHome,
+    env: { ...env, LOADSTONE_HOME: testHome },
     timeout: 30000,
   });
   running = application;
@@ -103,6 +103,31 @@ try {
         true,
         "stable update menu is ready without a network request",
       );
+      const requests = await application.evaluate(async ({ Menu, session }) => {
+        // Block all update transport in its separate Electron session. This tests
+        // the shipped GitHub provider and menu, not a mutable production feed.
+        const transport = session.fromPartition("electron-updater", { cache: false });
+        const urls = [];
+        transport.webRequest.onBeforeRequest((details, callback) => {
+          urls.push(details.url);
+          callback({ cancel: true });
+        });
+        try {
+          const item = () =>
+            Menu.getApplicationMenu()?.items.find(({ label }) => label === "Updates")?.submenu
+              ?.items[0];
+          item().click();
+          for (let i = 0; i < 100; i++) {
+            if (item()?.label === "Update failed — check again") return urls;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error("Expected the update failure menu to allow retry.");
+        } finally {
+          transport.webRequest.onBeforeRequest(null);
+        }
+      });
+      assert.ok(requests.length);
+      assert.ok(requests.every((url) => /^https:\/\/(api\.)?github\.com\//.test(url)));
     } else {
       await assert.rejects(readFile(join(resources, "loadstone-stable.json")), { code: "ENOENT" });
       await assert.rejects(readFile(join(resources, "app-update.yml")), { code: "ENOENT" });
@@ -397,10 +422,25 @@ try {
   running = undefined;
   const release = await lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 });
   await release();
+
+  // Follow the offline restore recipe, keeping the backup and original home intact.
+  const recovery = join(home, "offline recovery");
+  await mkdir(recovery);
+  await cp(join(backup, "memory.sqlite"), join(recovery, "memory.sqlite"));
+  await cp(join(backup, "sessions"), join(recovery, "sessions"), { recursive: true });
+  ({ application, page } = await launch(recovery));
+  await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
+  await page.getByText("Hello from packaged Loadstone.", { exact: true }).waitFor();
+  const recovered = await page.evaluate(() => window.loadstone.snapshot());
+  assert.equal(recovered.connection.mode, "offline", "snapshot does not restore credentials");
+  assert.equal(recovered.facts[0].value, 90);
+  assert.equal(recovered.session.id, snapshot.session.id);
+  await application.close();
+  running = undefined;
   console.log(
     "Desktop smoke passed:",
     runtime,
-    "— isolated renderer, pi SDK, legacy upgrade, credentials, chat replay, lock release",
+    "— isolated renderer, legacy upgrade, offline restore, credentials, chat replay, lock release",
   );
 } finally {
   await running?.close();

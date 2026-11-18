@@ -3,7 +3,7 @@ import { bundleNotices } from "./scripts/bundle-notices";
 
 export default defineConfig({
   pack: {
-    entry: ["src/main.ts", "src/launch.ts"],
+    entry: ["src/main.ts", "src/launch.ts", "src/storage-worker.ts"],
     plugins: [bundleNotices()],
     format: ["cjs"],
     platform: "node",

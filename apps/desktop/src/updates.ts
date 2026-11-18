@@ -23,6 +23,10 @@ export class UpdateDownload {
     return this.running;
   }
 
+  invalidate() {
+    this.set("failed");
+  }
+
   private set(state: UpdateState) {
     this.state = state;
     this.onChange(state);
@@ -46,8 +50,22 @@ export class UpdateDownload {
   }
 }
 
-/** Always attempt each close. Any failure vetoes installation. */
-export async function closeForExit(steps: (() => Promise<unknown> | undefined)[]) {
+export class PendingRequests {
+  private readonly pending = new Set<Promise<void>>();
+  track(request: Promise<void>) {
+    this.pending.add(request);
+    return request.finally(() => this.pending.delete(request));
+  }
+  async drain() {
+    await Promise.allSettled(this.pending);
+  }
+}
+
+/** Always attempt each close, but keep the lock until exit if any store failed. */
+export async function closeForExit(
+  steps: (() => Promise<unknown> | undefined)[],
+  release: () => Promise<void> | undefined,
+) {
   let clean = true;
   for (const step of steps) {
     try {
@@ -56,5 +74,11 @@ export async function closeForExit(steps: (() => Promise<unknown> | undefined)[]
       clean = false;
     }
   }
-  return clean;
+  if (!clean) return false;
+  try {
+    await release();
+    return true;
+  } catch {
+    return false;
+  }
 }

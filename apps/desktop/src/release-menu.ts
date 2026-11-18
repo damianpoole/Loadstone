@@ -1,9 +1,10 @@
 import { app, dialog, Menu, type MenuItemConstructorOptions } from "electron";
 import { autoUpdater, NsisUpdater } from "electron-updater";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { win32, join } from "node:path";
 import { UpdateDownload, type UpdateState } from "./updates";
+import { matchesStableFeed, stableFeed, validSHA512, verifyStagedInstaller } from "./update-trust";
 
 const labels: Record<UpdateState, string> = {
   idle: "Check for updates (GitHub)…",
@@ -58,7 +59,7 @@ async function enabled() {
       policy.version !== app.getVersion()
     )
       return false;
-    await readFile(join(process.resourcesPath, "app-update.yml"), "utf8");
+    const config = await readFile(join(process.resourcesPath, "app-update.yml"), "utf8");
     if (windows) {
       if (
         !(autoUpdater instanceof NsisUpdater) ||
@@ -68,17 +69,20 @@ async function enabled() {
       )
         return false;
       const publisher = policy.publisher;
+      if (!matchesStableFeed(config, publisher)) return false;
       autoUpdater.verifyUpdateCodeSignature = (_publishers, installer) =>
         verifyWindowsInstaller(installer, publisher);
+      return { publisher };
     }
-    return true;
+    return matchesStableFeed(config) ? { publisher: undefined } : false;
   } catch {
     return false;
   }
 }
 
 export async function setupReleaseMenu(canInteract: () => boolean, requestInstall: () => void) {
-  if (!(await enabled())) return;
+  const policy = await enabled();
+  if (!policy) return;
   // Do not log raw URLs, response bodies, paths, or certificate information.
   autoUpdater.logger = null;
   autoUpdater.autoDownload = false;
@@ -86,6 +90,21 @@ export async function setupReleaseMenu(canInteract: () => boolean, requestInstal
   autoUpdater.allowPrerelease = false;
   autoUpdater.allowDowngrade = false;
   autoUpdater.disableDifferentialDownload = true;
+  autoUpdater.setFeedURL(stableFeed);
+  let expectedHash: string | undefined;
+  let installer: string | undefined;
+  const verify = async () => {
+    const publisher = policy.publisher;
+    if (!publisher) return;
+    if (!installer || !expectedHash) throw new Error("Verified installer unavailable.");
+    await verifyStagedInstaller(installer, expectedHash, (path) =>
+      verifyWindowsInstaller(path, publisher),
+    );
+  };
+  const discardInstaller = async () => {
+    if (installer) await rm(installer, { force: true }).catch(() => {});
+    installer = undefined;
+  };
   let installTimer: ReturnType<typeof setTimeout> | undefined;
   const installFailed = () => {
     if (!installTimer) return;
@@ -99,23 +118,37 @@ export async function setupReleaseMenu(canInteract: () => boolean, requestInstal
   };
   autoUpdater.on("error", installFailed);
 
+  let confirming = false;
   const click = async () => {
-    if (!canInteract()) return;
+    if (!canInteract() || confirming) return;
     if (download.state !== "ready") {
       await download.check();
       return;
     }
-    const { response } = await dialog.showMessageBox({
-      type: "question",
-      title: "Restart to update Loadstone?",
-      message:
-        "Loadstone will close your saved data before installing. Unsent drafts will be lost.",
-      buttons: ["Later", "Install and restart"],
-      defaultId: 0,
-      cancelId: 0,
-      noLink: true,
-    });
-    if (response === 1 && canInteract()) requestInstall();
+    confirming = true;
+    try {
+      const { response } = await dialog.showMessageBox({
+        type: "question",
+        title: "Restart to update Loadstone?",
+        message:
+          "Loadstone will close your saved data before installing. Unsent drafts will be lost.",
+        buttons: ["Later", "Install and restart"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (response !== 1 || !canInteract()) return;
+      try {
+        await verify();
+      } catch {
+        await discardInstaller();
+        download.invalidate();
+        return;
+      }
+      if (canInteract()) requestInstall();
+    } finally {
+      confirming = false;
+    }
   };
   const menu = (state: UpdateState) => {
     const release: MenuItemConstructorOptions = {
@@ -147,15 +180,47 @@ export async function setupReleaseMenu(canInteract: () => boolean, requestInstal
       ]),
     );
   };
-  const download = new UpdateDownload(autoUpdater, menu);
+  const download = new UpdateDownload(
+    {
+      async checkForUpdates() {
+        const result = await autoUpdater.checkForUpdates();
+        if (policy.publisher && result?.isUpdateAvailable) {
+          const [file] = result.updateInfo.files;
+          if (
+            result.updateInfo.files.length !== 1 ||
+            !file?.url.endsWith(".exe") ||
+            !validSHA512(file.sha512)
+          )
+            throw new Error("Unexpected Windows update metadata.");
+          expectedHash = file.sha512;
+        }
+        return result;
+      },
+      async downloadUpdate() {
+        const files = await autoUpdater.downloadUpdate();
+        if (!policy.publisher) return;
+        installer = files[0];
+        try {
+          if (files.length !== 1) throw new Error("Expected a single Windows installer.");
+          await verify(); // Also covers the builder's cached-download path.
+        } catch (error) {
+          await discardInstaller();
+          throw error;
+        }
+      },
+    },
+    menu,
+  );
   menu(download.state);
-  return () => {
+  return async () => {
     // Squirrel.Mac can still fail native signature verification at this point.
     // Do not leave a storage-closed app hanging if native installation stalls.
     installTimer = setTimeout(installFailed, 90_000);
     try {
-      autoUpdater.quitAndInstall(false, true);
+      await verify(); // Check the exact path again after storage shutdown, just before launch.
+      if (installTimer) autoUpdater.quitAndInstall(false, true);
     } catch {
+      await discardInstaller();
       installFailed();
     }
   };

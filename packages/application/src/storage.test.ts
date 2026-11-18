@@ -11,7 +11,7 @@ import {
 import { openNodeSqliteDatabase } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { migrateSessionStorage, SESSION_SCHEMA_VERSION } from "@loadstone/agent";
 import { MemoryStore, MEMORY_SCHEMA_VERSION } from "@loadstone/memory";
-import { prepareStorage } from "./storage";
+import { prepareStorage, StorageUpgradeError } from "./storage";
 
 vi.mock("node:sqlite", async (importOriginal) => {
   const sqlite = await importOriginal<typeof import("node:sqlite")>();
@@ -118,6 +118,7 @@ describe("shared storage preflight", () => {
   });
 
   it("refuses a newer inactive session before backing up or migrating any file", async () => {
+    new MemoryStore(memoryPath()).close();
     const old = await legacySession("old");
     const newer = new DatabaseSync(await legacySession("newer"));
     newer.prepare("UPDATE durable_schema SET version=?").run(SESSION_SCHEMA_VERSION + 1);
@@ -148,7 +149,37 @@ describe("shared storage preflight", () => {
     expect(readRow(path, "SELECT version FROM durable_schema")?.version).toBe(1);
   });
 
+  it("rejects a partial restore without the matching character database", async () => {
+    const path = await legacySession();
+    await expect(prepareStorage(home)).rejects.toThrow("Restore the matching memory database");
+    expect(readRow(path, "SELECT version FROM durable_schema")?.version).toBe(1);
+    expect(await readdir(home)).not.toContain("memory.sqlite");
+  });
+
+  it("stops before publishing or migrating after ownership is lost during the snapshot", async () => {
+    new MemoryStore(memoryPath()).close();
+    const path = await legacySession();
+    const actual = (await vi.importActual<typeof import("node:sqlite")>("node:sqlite")).backup;
+    let owned = true;
+    vi.mocked(backup)
+      .mockImplementationOnce(actual)
+      .mockImplementationOnce(async (...params) => {
+        const count = await actual(...params);
+        owned = false;
+        return count;
+      });
+    await expect(
+      prepareStorage(home, async () => {
+        if (!owned) throw new StorageUpgradeError("Ownership lost");
+      }),
+    ).rejects.toThrow("Ownership lost");
+    expect(await readdir(backups())).toEqual([]);
+    expect(readRow(path, "SELECT version FROM durable_schema")?.version).toBe(1);
+    expect(migrateSessionStorage).not.toHaveBeenCalled();
+  });
+
   it("keeps the original snapshot through a failed multi-database upgrade and can retry", async () => {
+    new MemoryStore(memoryPath()).close();
     const first = await legacySession("a");
     const second = await legacySession("b");
     const real = (await vi.importActual<typeof import("@loadstone/agent")>("@loadstone/agent"))

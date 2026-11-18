@@ -94,6 +94,7 @@ export class Controller {
     private readonly openAgent = openCompanion,
     private readonly connect = createCompanionConnection,
     private readonly graphical = false,
+    private readonly makeBackup = () => backupStorage(home),
   ) {
     this.memory = new MemoryStore(join(home, "memory.sqlite"));
   }
@@ -508,14 +509,14 @@ export class Controller {
       await this.companion?.close();
       this.companion = undefined;
       try {
-        const directory = await backupStorage(this.home);
+        const directory = await this.makeBackup();
         this.update({
           notice: this.graphical
             ? `Backup saved to ${directory}. Contains private memory and conversations, not credentials. Keep this folder intact. Restoration currently requires the documented offline recovery procedure; there is no in-app restore yet.`
             : `Backup saved to ${directory}. Restore into an empty LOADSTONE_HOME while the app is closed.`,
         });
       } finally {
-        if (session) await this.activate(character, session);
+        if (session && !this.closing) await this.activate(character, session);
       }
       return;
     }

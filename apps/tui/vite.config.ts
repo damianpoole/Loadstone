@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: {
-    entry: ["src/index.tsx"],
+    entry: ["src/index.tsx", "src/storage-worker.ts"],
     format: ["esm"],
     platform: "node",
     target: "node24",

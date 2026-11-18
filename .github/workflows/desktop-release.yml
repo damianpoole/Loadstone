@@ -81,6 +81,7 @@ jobs:
           APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
           APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
+          LOADSTONE_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           test -n "$APPLE_API_KEY_B64"
@@ -97,14 +98,22 @@ jobs:
         if: matrix.platform == 'macos'
         working-directory: apps/desktop
         shell: bash
+        env:
+          LOADSTONE_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           app=release/mac-arm64/Loadstone.app
+          dmg=(release/*.dmg)
           codesign --verify --deep --strict "$app"
-          codesign -dv --verbose=4 "$app" 2>&1 | grep '^Authority=Developer ID Application:'
-          xcrun stapler validate "$app"
-          xcrun stapler validate release/*.dmg
+          codesign --verify --strict "${dmg[0]}"
+          for artifact in "$app" "${dmg[0]}"; do
+            signing="$(codesign -dv --verbose=4 "$artifact" 2>&1)"
+            grep -Fx "TeamIdentifier=$LOADSTONE_APPLE_TEAM_ID" <<< "$signing"
+            grep '^Authority=Developer ID Application:' <<< "$signing"
+            xcrun stapler validate "$artifact"
+          done
           spctl --assess --type execute --verbose "$app"
+          spctl --assess --type open --context context:primary-signature --verbose "${dmg[0]}"
           node scripts/verify-release.mjs
       - name: Smoke-test signed app from disk image
         if: matrix.platform == 'macos'

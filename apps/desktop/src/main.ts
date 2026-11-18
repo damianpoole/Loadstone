@@ -18,11 +18,11 @@ import {
   Controller,
   DesktopService,
   DesktopAuth,
-  prepareStorage,
+  storageWorker,
   StorageUpgradeError,
 } from "@loadstone/application";
 import { setupReleaseMenu } from "./release-menu";
-import { closeForExit } from "./updates";
+import { closeForExit, PendingRequests } from "./updates";
 import { channels } from "./protocol";
 import { contentSecurityPolicy, trustedFrame } from "./security";
 
@@ -39,22 +39,24 @@ let unsubscribe: (() => void) | undefined;
 let closing = false;
 let closed = false;
 let installAfterClose = false;
-let install: (() => void) | undefined;
+let install: (() => Promise<void>) | undefined;
+let storage: Awaited<ReturnType<typeof storageWorker>> | undefined;
 let lockCompromised = false;
+const requests = new PendingRequests();
 
 app.on("before-quit", (event) => {
   if (closed) return;
   event.preventDefault();
   if (closing) return;
   closing = true;
+  authentication?.cancel();
   void (async () => {
     await startup;
     unsubscribe?.();
-    const clean = await closeForExit([
-      () => authentication?.close(),
-      () => controller?.close(),
-      () => release?.(),
-    ]);
+    const clean = await closeForExit(
+      [() => authentication?.close(), () => requests.drain(), () => controller?.close()],
+      () => (lockCompromised ? undefined : release?.()),
+    );
     if (!clean) {
       console.error("[Loadstone] Local storage did not shut down cleanly.");
       dialog.showErrorBox(
@@ -63,7 +65,7 @@ app.on("before-quit", (event) => {
       );
     }
     closed = true;
-    if (clean && !lockCompromised && installAfterClose && install) install();
+    if (clean && !lockCompromised && installAfterClose && install) await install();
     else app.quit();
   })();
 });
@@ -82,6 +84,7 @@ async function main() {
     retries: 0,
     onCompromised: () => {
       lockCompromised = true;
+      storage?.invalidate();
       console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
       dialog.showErrorBox(
         "Loadstone storage lock",
@@ -91,7 +94,10 @@ async function main() {
     },
   });
   startupStage = "storage compatibility check";
-  const backup = await prepareStorage(home);
+  const maintenance = await storageWorker(home, join(__dirname, "storage-worker.cjs"));
+  storage = maintenance;
+  if (lockCompromised) maintenance.invalidate();
+  const backup = await maintenance.run("prepare");
   if (closing) return;
   startupStage = "character memory setup";
   const encryptionAvailable = () =>
@@ -115,9 +121,20 @@ async function main() {
     (url) => shell.openExternal(url),
   );
   await authentication.initialize();
+  await maintenance.assertOwned();
   if (closing) return;
   const auth = authentication;
-  controller = new Controller(home, undefined, () => auth.connection(), true);
+  controller = new Controller(
+    home,
+    undefined,
+    () => auth.connection(),
+    true,
+    async () => {
+      const path = await maintenance.run("backup");
+      if (!path) throw new Error("No backup was created.");
+      return path;
+    },
+  );
   const service = new DesktopService(controller, auth, async (url) => {
     const { response } = await dialog.showMessageBox({
       type: "question",
@@ -203,7 +220,7 @@ async function main() {
   });
   ipcMain.handle(channels.request, async (event, request: unknown) => {
     authorize(event);
-    await service.request(request);
+    await requests.track(service.request(request));
   });
   unsubscribe = service.subscribe((snapshot) => {
     if (!window.isDestroyed() && !window.webContents.isDestroyed())

@@ -30,7 +30,16 @@ if (windows) {
   if (!publisher.startsWith("CN="))
     throw new Error("Set the exact Authenticode signing certificate Subject.");
 } else {
-  required("CSC_LINK", "CSC_KEY_PASSWORD", "APPLE_API_KEY", "APPLE_API_KEY_ID", "APPLE_API_ISSUER");
+  required(
+    "CSC_LINK",
+    "CSC_KEY_PASSWORD",
+    "APPLE_API_KEY",
+    "APPLE_API_KEY_ID",
+    "APPLE_API_ISSUER",
+    "LOADSTONE_APPLE_TEAM_ID",
+  );
+  if (!/^[A-Z0-9]{10}$/.test(process.env.LOADSTONE_APPLE_TEAM_ID))
+    throw new Error("Set the expected Apple Developer Team ID.");
 }
 
 module.exports = {
@@ -52,7 +61,14 @@ module.exports = {
     entitlementsInherit: "packaging/entitlements.mac.plist",
     notarize: true,
   },
-  dmg: { writeUpdateInfo: false }, // Update metadata covers ZIP, not the separately notarized DMG.
+  dmg: { sign: true, writeUpdateInfo: false }, // The updater downloads ZIP, not the DMG.
+  nsis: {
+    ...build.nsis,
+    oneClick: true,
+    perMachine: false,
+    allowToChangeInstallationDirectory: false,
+    packElevateHelper: false,
+  },
   win: {
     ...build.win,
     ...(windows

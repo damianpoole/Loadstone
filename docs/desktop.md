@@ -214,8 +214,9 @@ pre-migration snapshots.
 Each database migration is atomic, but the collection is not one transaction. If an
 upgrade is interrupted, keep the earliest complete pre-migration snapshot; retrying
 can finish the remaining migrations or create another snapshot of the intermediate
-state. Ignore any `.partial-*` backup directory. The home lock also covers first-open
-migration. See [offline recovery](ironman-tui.md#storage-backup-and-privacy) before
+state. Ignore any `.partial-*` backup directory. A storage maintenance worker keeps
+the lock heartbeat responsive during scans/migrations. It checks lock ownership
+before publishing snapshots and before each migration. See [offline recovery](ironman-tui.md#storage-backup-and-privacy) before
 attempting a rollback. The schema number alone does not prove runtime compatibility;
 review the pin, record encoding and auth SDK behavior on every runtime upgrade.
 

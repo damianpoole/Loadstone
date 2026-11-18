@@ -48,6 +48,10 @@ async function databases(home: string): Promise<Database[]> {
       kind: "session",
     });
   }
+  if (!existing && result.length)
+    throw new StorageUpgradeError(
+      "Conversation databases exist without memory.sqlite. Restore the matching memory database from the same backup before opening this home.",
+    );
   return result.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
@@ -94,7 +98,12 @@ async function sync(path: string, directory = false) {
   }
 }
 
-async function snapshot(home: string, sources: Database[], reason: "manual" | "pre-migration") {
+async function snapshot(
+  home: string,
+  sources: Database[],
+  reason: "manual" | "pre-migration",
+  assertOwned: () => Promise<void>,
+) {
   const root = join(home, "backups");
   await mkdir(root, { recursive: true, mode: 0o700 });
   const id = `${reason}-${randomUUID()}`;
@@ -104,6 +113,7 @@ async function snapshot(home: string, sources: Database[], reason: "manual" | "p
   try {
     await mkdir(join(staging, "sessions"), { mode: 0o700 });
     for (const source of sources) {
+      await assertOwned();
       const target = join(staging, source.relativePath);
       const db = new DatabaseSync(source.path, { readOnly: true });
       try {
@@ -145,6 +155,7 @@ async function snapshot(home: string, sources: Database[], reason: "manual" | "p
       await sync(join(staging, "sessions"), true);
       await sync(staging, true);
     }
+    await assertOwned();
     await rename(staging, destination);
     if (process.platform !== "win32") {
       await sync(root, true);
@@ -159,17 +170,25 @@ async function snapshot(home: string, sources: Database[], reason: "manual" | "p
 }
 
 /** Caller holds the shared home lock; no other Loadstone writer may run. */
-export async function prepareStorage(home: string) {
+export async function prepareStorage(
+  home: string,
+  assertOwned: () => Promise<void> = async () => {},
+) {
+  await assertOwned();
   const sources = await databases(home);
   const outdated = sources.filter(
     (source) =>
       schema(source) < (source.kind === "memory" ? MEMORY_SCHEMA_VERSION : SESSION_SCHEMA_VERSION),
   );
-  if (!outdated.length) return;
+  if (!outdated.length) {
+    await assertOwned();
+    return;
+  }
   let saved: string;
   try {
-    saved = await snapshot(home, sources, "pre-migration");
-  } catch {
+    saved = await snapshot(home, sources, "pre-migration", assertOwned);
+  } catch (error) {
+    if (error instanceof StorageUpgradeError) throw error;
     throw new StorageUpgradeError(
       "Could not complete the pre-upgrade backup. No migrations were started. Check free disk space and backup directory permissions, then retry.",
     );
@@ -178,10 +197,15 @@ export async function prepareStorage(home: string) {
     // Migrate inactive sessions too, so a later session switch cannot silently
     // migrate historical data without the same all-database recovery point.
     for (const session of outdated.filter(({ kind }) => kind === "session")) {
+      await assertOwned();
       await migrateSessionStorage(session.path);
     }
     const memory = outdated.find(({ kind }) => kind === "memory");
-    if (memory) new MemoryStore(memory.path).close();
+    if (memory) {
+      await assertOwned();
+      new MemoryStore(memory.path).close();
+    }
+    await assertOwned();
     return saved;
   } catch {
     throw new StorageUpgradeError(
@@ -191,6 +215,10 @@ export async function prepareStorage(home: string) {
 }
 
 /** Call with the home locked and the durable companion closed. */
-export async function backupStorage(home: string) {
-  return snapshot(home, await databases(home), "manual");
+export async function backupStorage(
+  home: string,
+  assertOwned: () => Promise<void> = async () => {},
+) {
+  await assertOwned();
+  return snapshot(home, await databases(home), "manual", assertOwned);
 }

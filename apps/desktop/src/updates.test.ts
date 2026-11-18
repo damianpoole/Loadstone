@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import { closeForExit, UpdateDownload, type UpdateState } from "./updates";
+import { closeForExit, PendingRequests, UpdateDownload, type UpdateState } from "./updates";
 
 function fixture() {
   const transport = {
@@ -60,7 +60,7 @@ describe("shutdown gate", () => {
     const closed = Promise.withResolvers<void>();
     const release = vi.fn();
     const install = vi.fn();
-    const done = closeForExit([() => closed.promise, release]).then((clean) => {
+    const done = closeForExit([() => closed.promise], release).then((clean) => {
       if (clean) install();
     });
     expect(release).not.toHaveBeenCalled();
@@ -70,16 +70,34 @@ describe("shutdown gate", () => {
     expect(release).toHaveBeenCalledBefore(install);
   });
 
-  it("vetoes install on a failed close, but still closes remaining stores and releases ownership", async () => {
+  it("vetoes install on a failed close, attempts remaining closes, and retains ownership", async () => {
     const storage = vi.fn();
     const release = vi.fn();
-    const clean = await closeForExit([
-      () => Promise.reject(new Error("could not close credentials")),
-      storage,
+    const clean = await closeForExit(
+      [() => Promise.reject(new Error("could not close credentials")), storage],
       release,
-    ]);
+    );
     expect(clean).toBe(false);
+    expect(storage).toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    expect(await closeForExit([], () => Promise.reject(new Error("lost ownership")))).toBe(false);
+  });
+
+  it("drains an admitted delayed store switch through reconnect before closing or releasing", async () => {
+    const pending = new PendingRequests();
+    const storeWrite = Promise.withResolvers<void>();
+    const reconnect = Promise.withResolvers<void>();
+    const request = pending.track(storeWrite.promise.then(() => reconnect.promise));
+    const storage = vi.fn();
+    const release = vi.fn();
+    const done = closeForExit([() => pending.drain(), storage], release);
+    storeWrite.resolve();
+    await Promise.resolve();
+    expect(storage).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+    reconnect.resolve();
+    await request;
+    expect(await done).toBe(true);
     expect(storage).toHaveBeenCalledBefore(release);
-    expect(await closeForExit([() => Promise.reject(new Error("lost ownership"))])).toBe(false);
   });
 });
