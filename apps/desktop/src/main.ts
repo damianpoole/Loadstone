@@ -32,6 +32,7 @@ const ozone = process.env.LOADSTONE_OZONE_PLATFORM;
 if (process.platform === "linux" && (ozone === "x11" || ozone === "wayland"))
   app.commandLine.appendSwitch("ozone-platform", ozone);
 let startupStage = "Electron initialization";
+let startupFailure: string | undefined;
 let controller: Controller | undefined;
 let authentication: DesktopAuth | undefined;
 let release: (() => Promise<void>) | undefined;
@@ -71,8 +72,18 @@ app.on("before-quit", (event) => {
         })
         .catch(() => {});
     }
+    if (startupFailure && !lockCompromised) {
+      await dialog
+        .showMessageBox({
+          type: "error",
+          title: "Loadstone could not start",
+          message: startupFailure,
+        })
+        .catch(() => {});
+    }
     closed = true;
-    if (clean && !lockCompromised && installAfterClose && install) await install();
+    if (clean && !startupFailure && !lockCompromised && installAfterClose && install)
+      await install();
     else app.quit();
   })();
 });
@@ -269,13 +280,11 @@ const startup = main().catch((error: unknown) => {
   console.error(`[Loadstone] Startup failed during ${startupStage}.`);
   process.exitCode = 1;
   const locked = error instanceof Error && "code" in error && error.code === "ELOCKED";
-  dialog.showErrorBox(
-    "Loadstone could not start",
+  startupFailure =
     error instanceof StorageUpgradeError
       ? error.message
       : locked
         ? "This character directory is already open in Loadstone desktop or the TUI. Close the other app first."
-        : "Loadstone could not open its local storage or application resources. Check permissions and the LOADSTONE_HOME setting. Your data has not been deleted.",
-  );
+        : "Loadstone could not open its local storage or application resources. Check permissions and the LOADSTONE_HOME setting. Your data has not been deleted.";
   app.quit();
 });

@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { expect, it } from "vite-plus/test";
-import { verifyWindowsInstaller, windowsPowerShell } from "./windows-installer";
+import { verifyWindowsInstaller, windowsPowerShell, windowsShellEnv } from "./windows-installer";
 
 it("requires an absolute Windows directory for the system trust tool", () => {
   expect(windowsPowerShell("relative")).toBeUndefined();
@@ -26,7 +28,7 @@ it.skipIf(process.platform !== "win32")(
         "$s = Get-AuthenticodeSignature -LiteralPath $env:LOADSTONE_SIGNATURE_FIXTURE; if ($s.Status -ne 'Valid') { exit 1 }; $s.SignerCertificate.Subject",
       ],
       {
-        env: { ...process.env, LOADSTONE_SIGNATURE_FIXTURE: fixture },
+        env: windowsShellEnv(fixture, { LOADSTONE_SIGNATURE_FIXTURE: fixture }),
         encoding: "utf8",
         timeout: 15_000,
       },
@@ -42,6 +44,19 @@ it.skipIf(process.platform !== "win32")(
     expect(
       await verifyWindowsInstaller(fixture, publisher, { sha512: "invalid", launch: false }),
     ).not.toBeNull();
+    const temporary = await mkdtemp(join(tmpdir(), "Loadstone junction "));
+    try {
+      const junction = join(temporary, "redirected directory");
+      await symlink(dirname(fixture), junction, "junction");
+      expect(
+        await verifyWindowsInstaller(join(junction, basename(fixture)), publisher, {
+          sha512,
+          launch: false,
+        }),
+      ).not.toBeNull();
+    } finally {
+      await rm(temporary, { recursive: true, force: true });
+    }
   },
-  60_000,
+  70_000,
 );
