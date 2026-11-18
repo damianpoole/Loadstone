@@ -19,7 +19,7 @@ function App() {
   const [mode, setMode] = useState<"ironman" | "hardcore" | "group-ironman">("ironman");
   const [scale, setScale] = useState(100);
   const anchor = useRef<{ height: number; top: number; first?: string } | undefined>(undefined);
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [provider, setProvider] = useState("");
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -85,6 +85,8 @@ function App() {
     );
   const busy = state.processing || state.view.busy || submitting;
   const connection = state.connection;
+  const sessionId = state.session?.id;
+  const draft = sessionId ? (drafts[sessionId] ?? "") : "";
   return (
     <main className="layout" style={{ fontSize: `${scale}%` }}>
       <a className="skip-link" href="#message">
@@ -427,10 +429,16 @@ function App() {
           className="composer"
           onSubmit={(event) => {
             event.preventDefault();
+            if (!sessionId || !draft.trim() || busy) return;
             follow.current = true;
-            const submitted = draft;
-            void request({ type: "send", text: submitted }).then((accepted) => {
-              if (accepted) setDraft((current) => (current === submitted ? "" : current));
+            void request({ type: "send", text: draft }).then((accepted) => {
+              if (!accepted) return;
+              setDrafts((current) => {
+                if (current[sessionId] !== draft) return current;
+                const next = { ...current };
+                delete next[sessionId];
+                return next;
+              });
             });
           }}
         >
@@ -438,14 +446,18 @@ function App() {
           <textarea
             id="message"
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              if (!sessionId) return;
+              const value = event.target.value;
+              setDrafts((current) => ({ ...current, [sessionId]: value }));
+            }}
             maxLength={32000}
             rows={3}
             placeholder="Ask for advice or report progress…"
-            disabled={!state.character}
+            disabled={!sessionId}
           />
           <div className="actions">
-            <button disabled={busy || !state.character || !draft.trim()}>Send</button>
+            <button disabled={busy || !sessionId || !draft.trim()}>Send</button>
             <button type="button" disabled={!busy} onClick={() => void request({ type: "cancel" })}>
               Cancel work
             </button>

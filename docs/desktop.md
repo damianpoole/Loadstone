@@ -175,7 +175,9 @@ package-install `engines` field.
 - IPC validates the sender WebContents, top-level frame, exact bundled file URL,
   operation type, input sizes and fields. Arbitrary slash commands are rejected.
 - CSP forbids renderer connections, inline/eval scripts, frames, forms and objects.
-- Window opening, navigation, webviews and permission requests are denied.
+- Window opening, navigation and webviews are denied. Only the app's main frame
+  can write plain text to the clipboard; clipboard reads and other permissions
+  are denied.
 - Model Markdown is rendered as React elements; raw HTML and images are disabled.
   Only HTTPS `runescape.wiki` links can open externally, after a native confirmation
   showing the URL. The backend rejects other hosts, embedded credentials and custom
@@ -371,7 +373,10 @@ No shell, environment variables, or manual JSON editing are required.
 
 This increment is **not completion of the entire Slice 3 acceptance gate**. History
 shows the latest 100 operations plus every pending review; character export includes
-full history. All decisions are character-scoped and serialized with agent/sync work.
+full history. Goals, history and reviews reload separately when saved memory changes,
+not during ordinary chat streaming. All decisions are character-scoped and serialized
+with agent/sync work. Unsent drafts stay with their conversation until the window
+is reloaded or closed.
 Stale approval and undo of facts touched by newer updates fail without changing memory.
 The correction form accepts kind-validated JSON values (including quoted text), not
 commands; regressions and deletions become proposals instead of silently overwriting

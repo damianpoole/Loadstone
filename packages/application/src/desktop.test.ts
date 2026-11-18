@@ -179,16 +179,16 @@ it("corrects, reviews, rejects and undoes memory with provenance and persistent 
     source: "user",
     evidence: "Explicit correction in desktop memory controls",
   });
-  const saved = desktop.snapshot().history[0];
+  const saved = desktop.memory().history[0];
   await edit(80);
   expect(desktop.snapshot().facts[0].value).toBe(90);
-  const proposal = desktop.snapshot().reviews[0];
+  const proposal = desktop.memory().reviews[0];
   expect(proposal.changes[0]).toMatchObject({ before: { value: 90 }, after: { value: 80 } });
   await desktop.request({ type: "review", id: proposal.id, accept: false });
-  expect(desktop.snapshot().reviews).toHaveLength(0);
+  expect(desktop.memory().reviews).toHaveLength(0);
   expect(desktop.snapshot().facts[0].value).toBe(90);
   await edit(null);
-  const deletion = desktop.snapshot().reviews[0];
+  const deletion = desktop.memory().reviews[0];
   await desktop.request({ type: "review", id: deletion.id, accept: true });
   expect(desktop.snapshot().facts).toHaveLength(0);
   await desktop.request({ type: "undo", id: deletion.id });
@@ -203,6 +203,7 @@ it("corrects, reviews, rejects and undoes memory with provenance and persistent 
 
 it("renders automatic save receipts with desktop review guidance rather than terminal commands", async () => {
   const { desktop, faux } = await playerDesktop();
+  const previousRevision = desktop.snapshot().memoryRevision;
   faux.setResponses([
     fauxAssistantMessage(
       [
@@ -224,7 +225,46 @@ it("renders automatic save receipts with desktop review guidance rather than ter
   expect(receipt).toContain("Saved automatically");
   expect(receipt).toContain("Memory history");
   expect(receipt).not.toContain("/undo");
-  expect(desktop.snapshot().history[0].changes[0].after?.evidence).toContain("Herblore is 90");
+  expect(desktop.snapshot().memoryRevision).toBeGreaterThan(previousRevision);
+  expect(desktop.memory().history[0].changes[0].after?.evidence).toContain("Herblore is 90");
+});
+
+it("does not read or send audit data during ordinary conversation updates", async () => {
+  const { controller, desktop, faux } = await playerDesktop();
+  await desktop.request({
+    type: "edit",
+    change: { kind: "goal", key: "Prifddinas", value: "active" },
+  });
+  const revision = desktop.snapshot().memoryRevision;
+  const history = vi.spyOn(controller.memory, "history");
+  const pending = vi.spyOn(controller.memory, "pending");
+  const snapshots: ReturnType<DesktopService["snapshot"]>[] = [];
+  const unsubscribe = desktop.subscribe((snapshot) => snapshots.push(snapshot));
+  faux.setResponses([fauxAssistantMessage([fauxText("Ordinary reply.")])]);
+  await desktop.request({ type: "send", text: "Hello" });
+  await vi.waitFor(() => {
+    expect(desktop.snapshot().view.busy).toBe(false);
+    expect(
+      desktop.snapshot().view.messages.some((message) => message.text === "Ordinary reply."),
+    ).toBe(true);
+  });
+  unsubscribe();
+  expect(snapshots.some((snapshot) => snapshot.view.busy)).toBe(true);
+  for (const snapshot of snapshots) {
+    expect(snapshot.memoryRevision).toBe(revision);
+    expect(snapshot).not.toHaveProperty("history");
+    expect(snapshot).not.toHaveProperty("reviews");
+    expect(snapshot).not.toHaveProperty("goals");
+  }
+  expect(history).not.toHaveBeenCalled();
+  // The agent assembles its character context once per turn, not on each desktop update.
+  expect(pending).toHaveBeenCalledTimes(1);
+  const audit = desktop.memory();
+  expect(audit.revision).toBe(revision);
+  expect(audit.history).toHaveLength(1);
+  expect(audit.goals).toContain("prifddinas");
+  expect(history).toHaveBeenCalledTimes(1);
+  expect(pending).toHaveBeenCalledTimes(2);
 });
 
 it("validates browser destinations before invoking the native browser adapter", async () => {
@@ -252,16 +292,24 @@ it("rejects stale approvals, conflicting undo and cross-character receipt/sessio
   const { desktop } = await playerDesktop();
   const change = { kind: "skill", key: "Herblore", value: 90 } as const;
   await desktop.request({ type: "edit", change });
-  const first = desktop.snapshot().history[0];
+  const first = desktop.memory().history[0];
   await desktop.request({ type: "edit", change: { ...change, value: 80 } });
-  const proposal = desktop.snapshot().reviews[0];
+  const proposal = desktop.memory().reviews[0];
   await desktop.request({ type: "edit", change: { ...change, value: 99 } });
   await expect(desktop.request({ type: "review", id: proposal.id, accept: true })).rejects.toThrow(
     "Memory changed",
   );
   await expect(desktop.request({ type: "undo", id: first.id })).rejects.toThrow("newer update");
   const session = desktop.snapshot().session!.id;
+  const priorAudit = desktop.memory();
   await desktop.request({ type: "character", name: "Other" });
+  expect(desktop.memory()).toMatchObject({
+    characterId: desktop.snapshot().character?.id,
+    revision: priorAudit.revision,
+    history: [],
+    reviews: [],
+  });
+  expect(desktop.memory().characterId).not.toBe(priorAudit.characterId);
   await expect(desktop.request({ type: "resume", id: session })).rejects.toThrow(
     "Session not found",
   );
@@ -285,7 +333,7 @@ it("resumes sessions, preserves modes, exports full history and makes a reopenab
     type: "edit",
     change: { kind: "goal", key: "Prifddinas", value: "active" },
   });
-  expect(desktop.snapshot().goals).toContain("prifddinas");
+  expect(desktop.memory().goals).toContain("prifddinas");
   await desktop.request({ type: "export" });
   const exported = JSON.parse(
     await readFile(join(home, "exports", (await readdir(join(home, "exports")))[0]), "utf8"),

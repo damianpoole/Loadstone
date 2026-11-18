@@ -1,5 +1,9 @@
-import { useState } from "react";
-import type { DesktopRequest, DesktopSnapshot } from "@loadstone/application";
+import { useEffect, useState } from "react";
+import type {
+  DesktopMemorySnapshot,
+  DesktopRequest,
+  DesktopSnapshot,
+} from "@loadstone/application";
 import type { Fact, FactKind, FactValue, Receipt } from "@loadstone/application";
 
 type Request = (request: DesktopRequest) => Promise<boolean>;
@@ -169,8 +173,31 @@ export function PlayerControls({
   const [editing, setEditing] = useState<Fact>();
   const [target, setTarget] = useState("");
   const [kind, setKind] = useState<FactKind | "">("");
+  const [memory, setMemory] = useState<DesktopMemorySnapshot>();
+  const [memoryError, setMemoryError] = useState(false);
+  const characterId = state.character?.id;
+  const memoryRevision = state.memoryRevision;
+  useEffect(() => {
+    if (!characterId) return;
+    let active = true;
+    setMemoryError(false);
+    void window.loadstone
+      .memory()
+      .then((result) => {
+        if (active && result.characterId === characterId) setMemory(result);
+      })
+      .catch(() => {
+        if (active) setMemoryError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [characterId, memoryRevision]);
+  const reviews = memory?.reviews ?? [];
+  const auditBusy = busy || memory?.revision !== memoryRevision;
   return (
     <>
+      {memoryError && <p role="alert">Could not load goals or memory history.</p>}
       <details>
         <summary>Conversations ({state.sessions?.length ?? 0})</summary>
         <label>
@@ -196,7 +223,10 @@ export function PlayerControls({
       </details>
       <details>
         <summary>Goals and plans</summary>
-        <pre className="goals">{state.goals || "No saved goals yet."}</pre>
+        <pre className="goals">
+          {memory?.goals ??
+            (characterId && !memoryError ? "Loading goals…" : "No saved goals yet.")}
+        </pre>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -269,14 +299,14 @@ export function PlayerControls({
             </article>
           ))}
       </details>
-      <details open={state.reviews.length > 0}>
-        <summary>Memory review ({state.reviews.length})</summary>
+      <details open={reviews.length > 0}>
+        <summary>Memory review ({state.pending})</summary>
         <p>
           Review the entire operation before approving. Approval applies every change together.
           Rejecting leaves saved memory unchanged.
         </p>
-        {state.reviews.map((receipt) => (
-          <ReceiptCard key={receipt.id} receipt={receipt} busy={busy} request={request} />
+        {reviews.map((receipt) => (
+          <ReceiptCard key={receipt.id} receipt={receipt} busy={auditBusy} request={request} />
         ))}
       </details>
       <details>
@@ -285,10 +315,10 @@ export function PlayerControls({
           Latest 100 operations, including automatic saves, corrections and undo. Export includes
           the full history.
         </p>
-        {state.history
+        {memory?.history
           .filter((receipt) => receipt.status !== "review")
           .map((receipt) => (
-            <ReceiptCard key={receipt.id} receipt={receipt} busy={busy} request={request} />
+            <ReceiptCard key={receipt.id} receipt={receipt} busy={auditBusy} request={request} />
           ))}
       </details>
       <details>

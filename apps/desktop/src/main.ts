@@ -7,6 +7,7 @@ import {
   safeStorage,
   shell,
   type IpcMainInvokeEvent,
+  type WebContents,
 } from "electron";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -121,10 +122,6 @@ async function main() {
   };
 
   const renderer = pathToFileURL(join(__dirname, "renderer", "index.html")).href;
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-    callback(false),
-  );
-  session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -153,6 +150,23 @@ async function main() {
       webviewTag: false,
     },
   });
+  const allowClipboardWrite = (
+    contents: WebContents | null,
+    permission: string,
+    details: { isMainFrame: boolean; requestingUrl?: string },
+  ) =>
+    !closing &&
+    !window.isDestroyed() &&
+    contents === window.webContents &&
+    permission === "clipboard-sanitized-write" &&
+    details.isMainFrame &&
+    trustedFrame(details.requestingUrl, renderer);
+  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) =>
+    callback(allowClipboardWrite(contents, permission, details)),
+  );
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    allowClipboardWrite(contents, permission, details),
+  );
   const authorize = (event: IpcMainInvokeEvent) => {
     if (
       closing ||
@@ -165,6 +179,10 @@ async function main() {
   ipcMain.handle(channels.snapshot, (event) => {
     authorize(event);
     return service.snapshot();
+  });
+  ipcMain.handle(channels.memory, (event) => {
+    authorize(event);
+    return service.memory();
   });
   ipcMain.handle(channels.request, async (event, request: unknown) => {
     authorize(event);

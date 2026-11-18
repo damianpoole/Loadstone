@@ -148,6 +148,13 @@ export function validateChange(change: Change): void {
 /** Single-process local repository. The app holds a directory lock for its lifetime. */
 export class MemoryStore {
   private readonly db: DatabaseSync;
+  private memoryRevision = 0;
+
+  /** Process-local version for fact and audit views, not session or settings writes. */
+  get revision(): number {
+    return this.memoryRevision;
+  }
+
   constructor(path: string) {
     this.db = new DatabaseSync(path);
     this.db.exec(
@@ -183,6 +190,7 @@ export class MemoryStore {
     try {
       const result = fn();
       this.db.exec("COMMIT");
+      this.memoryRevision++;
       return result;
     } catch (error) {
       this.db.exec("ROLLBACK");

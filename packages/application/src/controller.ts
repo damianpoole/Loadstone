@@ -87,6 +87,7 @@ export class Controller {
   private closing?: Promise<void>;
   private operation?: Promise<void>;
   private epoch = 0;
+  private refreshedMemory?: { characterId?: string; revision: number };
   constructor(
     readonly home: string,
     private readonly openAgent = openCompanion,
@@ -107,13 +108,15 @@ export class Controller {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
-  private refresh() {
-    const id = this.state.character?.id;
-    this.update({
-      facts: id ? this.memory.facts(id) : [],
-      sessions: id ? this.memory.sessions(id) : [],
-      pending: id ? this.memory.pending(id).length : 0,
-    });
+  private refresh(patch: Partial<AppState> = {}) {
+    const id = (patch.character ?? this.state.character)?.id;
+    const revision = this.memory.revision;
+    if (this.refreshedMemory?.characterId !== id || this.refreshedMemory?.revision !== revision) {
+      patch.facts = id ? this.memory.facts(id) : [];
+      patch.pending = id ? this.memory.pending(id).length : 0;
+      this.refreshedMemory = { characterId: id, revision };
+    }
+    this.update({ ...patch, sessions: id ? this.memory.sessions(id) : [] });
   }
   report(error: unknown) {
     this.update({ notice: error instanceof Error ? error.message : String(error) });
@@ -150,10 +153,9 @@ export class Controller {
     const epoch = ++this.epoch;
     await this.companion?.close();
     this.companion = undefined;
-    this.update({ character, session, view: emptyView() });
     this.memory.setSetting("activeCharacter", character.id);
     this.memory.setSetting(`session:${character.id}`, session.id);
-    this.refresh();
+    this.refresh({ character, session, view: emptyView() });
     await mkdir(join(this.home, "sessions"), { recursive: true, mode: 0o700 });
     this.companion = await this.openAgent({
       graphical: this.graphical,
@@ -166,8 +168,7 @@ export class Controller {
       onChange: (view) => {
         if (epoch === this.epoch && !this.closed) {
           session = this.memory.sessions(character.id).find((s) => s.id === session.id)!;
-          this.update({ view, session });
-          this.refresh();
+          this.refresh({ view, session });
         }
       },
       onError: (error) => {
@@ -210,8 +211,7 @@ export class Controller {
       })
       .finally(() => {
         this.operation = undefined;
-        this.update({ processing: false });
-        this.refresh();
+        this.refresh({ processing: false });
       });
     return this.operation;
   }

@@ -26,12 +26,18 @@ export type DesktopRequest =
 export interface DesktopSnapshot extends AppState {
   characters: Character[];
   connection?: DesktopAuthState;
+  memoryRevision: number;
+}
+export interface DesktopMemorySnapshot {
+  characterId?: string;
+  revision: number;
   history: Receipt[];
   reviews: Receipt[];
   goals: string;
 }
 export interface DesktopAPI {
   snapshot(): Promise<DesktopSnapshot>;
+  memory(): Promise<DesktopMemorySnapshot>;
   request(request: DesktopRequest): Promise<void>;
   subscribe(listener: (snapshot: DesktopSnapshot) => void): () => void;
 }
@@ -158,14 +164,19 @@ export class DesktopService {
     ...this.controller.snapshot(),
     characters: this.controller.memory.characters(),
     connection: this.auth?.state,
-    history: this.controller.state.character
-      ? this.controller.memory.history(this.controller.state.character.id)
-      : [],
-    reviews: this.controller.state.character
-      ? this.controller.memory.pending(this.controller.state.character.id)
-      : [],
-    goals: formatGoals(this.controller.state.facts),
+    memoryRevision: this.controller.memory.revision,
   });
+  memory = (): DesktopMemorySnapshot => {
+    const characterId = this.controller.state.character?.id;
+    const store = this.controller.memory;
+    return {
+      characterId,
+      revision: store.revision,
+      history: characterId ? store.history(characterId) : [],
+      reviews: characterId ? store.pending(characterId) : [],
+      goals: formatGoals(characterId ? store.facts(characterId) : []),
+    };
+  };
   subscribe(listener: (snapshot: DesktopSnapshot) => void) {
     const changed = () => listener(this.snapshot());
     const controller = this.controller.subscribe(changed);
