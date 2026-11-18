@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { rm } from "node:fs/promises";
 import { win32 } from "node:path";
 
 export function windowsPowerShell(systemRoot = process.env.SystemRoot) {
@@ -19,7 +20,7 @@ export function windowsShellEnv(shell: string, overrides: Record<string, string>
 export function verifyWindowsInstaller(
   path: string,
   publisher: string,
-  guardOptions?: { sha512: string; launch: boolean },
+  guardOptions?: { sha512: string; launch: false | { barrier: string; executable: string } },
 ): Promise<string | null> {
   const command = Buffer.from(
     `
@@ -28,6 +29,9 @@ export function verifyWindowsInstaller(
     $file = $env:LOADSTONE_VERIFY_FILE
     $digest = $env:LOADSTONE_VERIFY_SHA512
     $guard = $null
+    $handoff = $env:LOADSTONE_UPDATE_BARRIER
+    $restart = $env:LOADSTONE_UPDATE_RESTART
+    $updated = $false
     try {
       if ($digest) {
         Add-Type -TypeDefinition @'
@@ -86,40 +90,84 @@ public sealed class LoadstonePathGuard : IDisposable {
       }
       $s = Get-AuthenticodeSignature -LiteralPath $file
       if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -cne $env:LOADSTONE_VERIFY_PUBLISHER) { throw 'Untrusted installer' }
-      if ($digest -and $env:LOADSTONE_VERIFY_LAUNCH -eq '1') {
+      if ($digest -and $handoff -and $restart) {
         $start = New-Object System.Diagnostics.ProcessStartInfo
         $start.FileName = $file
-        $start.Arguments = '--updated --force-run'
+        $start.Arguments = '--updated'
         $start.UseShellExecute = $false
         $start.WorkingDirectory = [System.IO.Path]::GetDirectoryName($file)
         $child = [System.Diagnostics.Process]::Start($start)
         if (-not $child) { throw 'Installer did not start' }
-        $child.Dispose()
+        $guard.Dispose()
+        $guard = $null
+        [Console]::Out.WriteLine('LOADSTONE_INSTALLER_STARTED')
+        [Console]::Out.Flush()
+        try { $child.WaitForExit(); $updated = $child.ExitCode -eq 0 } finally { $child.Dispose() }
       }
-    } finally { if ($guard) { $guard.Dispose() } }
+    } finally {
+      if ($guard) { $guard.Dispose() }
+      if ($handoff) { [System.IO.File]::Delete($handoff) }
+    }
+    if ($updated) {
+      $start = New-Object System.Diagnostics.ProcessStartInfo
+      $start.FileName = $restart
+      $start.UseShellExecute = $false
+      $start.WorkingDirectory = [System.IO.Path]::GetDirectoryName($restart)
+      [void][System.Diagnostics.Process]::Start($start)
+    }
   `,
     "utf16le",
   ).toString("base64");
   const shell = windowsPowerShell();
-  if (!shell) return Promise.resolve("Windows trust verification unavailable.");
+  if (!shell) {
+    const handoff = guardOptions?.launch;
+    return (
+      handoff ? rm(handoff.barrier, { force: true }).catch(() => {}) : Promise.resolve()
+    ).then(() => "Windows trust verification unavailable.");
+  }
+  const args = ["-NoProfile", "-NonInteractive", "-EncodedCommand", command];
+  const handoff = guardOptions?.launch;
+  const env = windowsShellEnv(shell, {
+    LOADSTONE_VERIFY_FILE: path,
+    LOADSTONE_VERIFY_PUBLISHER: publisher,
+    LOADSTONE_VERIFY_SHA512: guardOptions?.sha512 ?? "",
+    LOADSTONE_UPDATE_BARRIER: handoff ? handoff.barrier : "",
+    LOADSTONE_UPDATE_RESTART: handoff ? handoff.executable : "",
+  });
   return new Promise((resolve) => {
-    execFile(
-      shell,
-      ["-NoProfile", "-NonInteractive", "-EncodedCommand", command],
-      {
-        timeout: 30_000,
+    if (handoff) {
+      // The helper—not Electron—owns the barrier until the installer exits.
+      const child = spawn(shell, args, {
+        detached: true,
         windowsHide: true,
-        env: windowsShellEnv(shell, {
-          LOADSTONE_VERIFY_FILE: path,
-          LOADSTONE_VERIFY_PUBLISHER: publisher,
-          LOADSTONE_VERIFY_SHA512: guardOptions?.sha512 ?? "",
-          LOADSTONE_VERIFY_LAUNCH: guardOptions?.launch ? "1" : "0",
-        }),
-      },
-      (error, _stdout, stderr) =>
-        resolve(
-          error || stderr.trim() ? "Windows installer signature could not be verified." : null,
-        ),
+        env,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const failure = "Windows installation could not start.";
+      const timer = setTimeout(() => resolve(failure), 30_000);
+      let output = "";
+      child.stdout.setEncoding("utf8").on("data", (text: string) => {
+        output = (output + text).slice(-1024);
+        if (output.includes("LOADSTONE_INSTALLER_STARTED")) {
+          clearTimeout(timer);
+          child.unref();
+          resolve(null);
+        }
+      });
+      child.once("error", () => {
+        clearTimeout(timer);
+        void rm(handoff.barrier, { force: true })
+          .catch(() => {})
+          .finally(() => resolve(failure));
+      });
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve(failure);
+      });
+      return;
+    }
+    execFile(shell, args, { timeout: 30_000, windowsHide: true, env }, (error, _stdout, stderr) =>
+      resolve(error || stderr.trim() ? "Windows installer signature could not be verified." : null),
     );
   });
 }

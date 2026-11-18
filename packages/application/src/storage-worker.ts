@@ -24,7 +24,7 @@ async function assertOwnership(home: string, ownership: Ownership, flag: Int32Ar
     );
 }
 
-/** Offload SQLite scans and migrations so they cannot starve the lock heartbeat. */
+/** Offload SQLite scans and migrations so they do not block the host event loop. */
 export async function storageWorker(home: string, entry: string | URL) {
   const ownership = await identify(home);
   const active = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);

@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   sign:
-    if: github.repository == 'damianpoole/Loadstone' && github.ref == 'refs/heads/main'
+    # Repo readers can download Actions artifacts. Never put signed candidates in the public source repo.
+    if: github.repository == 'damianpoole/Loadstone-release' && github.event.repository.private && github.ref == 'refs/heads/main'
     name: Signed candidate (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     environment: desktop-release-${{ matrix.platform }}
@@ -40,6 +41,21 @@ jobs:
           node-version: "24.19.0"
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
+      - name: Verify pinned Windows signing tools before exposing credentials
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'loadstone-signing-client'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $zip = Join-Path $root 'client.zip'
+          Invoke-WebRequest 'https://api.nuget.org/v3-flatcontainer/microsoft.trusted.signing.client/1.0.95/microsoft.trusted.signing.client.1.0.95.nupkg' -OutFile $zip
+          if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne '3bfcf1e0a3cb42af1692f0a8ed45c15de070c2de86f28a59b2795d904d8a920f') { throw 'Unexpected signing client digest' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $root
+          $dlib = Join-Path $root 'bin/x64/Azure.CodeSigning.Dlib.dll'
+          $tool = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin/10.0.26100.0/x64/signtool.exe'
+          if (-not (Test-Path -LiteralPath $dlib -PathType Leaf) -or (Get-AuthenticodeSignature -LiteralPath $tool).Status -ne 'Valid') { throw 'Signing tools unavailable or untrusted' }
+          "LOADSTONE_SIGNTOOL=$tool" >> $env:GITHUB_ENV
+          "LOADSTONE_SIGN_DLIB=$dlib" >> $env:GITHUB_ENV
       - name: Sign Windows x64 candidate via Azure Trusted Signing
         if: matrix.platform == 'windows'
         working-directory: apps/desktop

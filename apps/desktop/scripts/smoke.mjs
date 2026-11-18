@@ -1,6 +1,8 @@
 // Runs the real Electron renderer with isolated data and mocked provider transport.
 // LOADSTONE_SMOKE_EXECUTABLE points at an unpacked/installed app to test packaging.
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { once } from "node:events";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -298,6 +300,19 @@ try {
   await assert.rejects(lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 }), {
     code: "ELOCKED",
   });
+  if (process.env.LOADSTONE_SMOKE_NSIS_PATH) {
+    await assert.rejects(
+      promisify(execFile)(process.env.LOADSTONE_SMOKE_NSIS_PATH, ["/S", "--updated"], {
+        timeout: 25_000,
+      }),
+      { code: 2 },
+      "NSIS refuses a live binary instead of terminating the app",
+    );
+    assert.equal(
+      (await page.evaluate(() => window.loadstone.snapshot())).session.id,
+      snapshot.session.id,
+    );
+  }
   // Exercise the real window-close/before-quit lifecycle, not a forced process kill.
   const exited = once(application.process(), "exit", { signal: AbortSignal.timeout(30000) });
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
@@ -426,6 +441,7 @@ try {
   // Follow the offline restore recipe, keeping the backup and original home intact.
   const recovery = join(home, "offline recovery");
   await mkdir(recovery);
+  await cp(join(backup, "backup.json"), join(recovery, "backup.json"));
   await cp(join(backup, "memory.sqlite"), join(recovery, "memory.sqlite"));
   await cp(join(backup, "sessions"), join(recovery, "sessions"), { recursive: true });
   ({ application, page } = await launch(recovery));

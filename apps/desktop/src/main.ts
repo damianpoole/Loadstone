@@ -9,20 +9,21 @@ import {
   type IpcMainInvokeEvent,
   type WebContents,
 } from "electron";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import lockfile from "proper-lockfile";
 import {
   Controller,
   DesktopService,
   DesktopAuth,
+  acquireHomeLease,
   storageWorker,
   StorageUpgradeError,
 } from "@loadstone/application";
 import { setupReleaseMenu } from "./release-menu";
 import { closeForExit, PendingRequests } from "./updates";
+import { acquireInstallationLease } from "./install-lease";
 import { channels } from "./protocol";
 import { contentSecurityPolicy, trustedFrame } from "./security";
 
@@ -41,6 +42,7 @@ let closing = false;
 let closed = false;
 let installAfterClose = false;
 let install: (() => Promise<void>) | undefined;
+let installation: Awaited<ReturnType<typeof acquireInstallationLease>> | undefined;
 let storage: Awaited<ReturnType<typeof storageWorker>> | undefined;
 let lockCompromised = false;
 const requests = new PendingRequests();
@@ -91,21 +93,34 @@ app.on("window-all-closed", () => app.quit());
 
 async function main() {
   await app.whenReady();
+  if (
+    app.isPackaged &&
+    process.platform === "win32" &&
+    (await stat(join(process.resourcesPath, "loadstone-stable.json")).catch(() => undefined))
+  ) {
+    try {
+      installation = await acquireInstallationLease(
+        join(app.getPath("home"), ".loadstone-installations"),
+        process.execPath,
+      );
+    } catch {
+      // No character or credential stores have been opened. Do not linger and
+      // keep the application's executable mapped while the installer runs.
+      console.error("[Loadstone] This installation is already open or being updated.");
+      app.exit(1);
+      return;
+    }
+  }
   const home = resolve(process.env.LOADSTONE_HOME ?? join(homedir(), ".loadstone"));
   startupStage = "storage directory setup";
   await mkdir(home, { recursive: true, mode: 0o700 });
   // Same ownership protocol as the TUI. Never open SQLite before acquiring it.
   startupStage = "storage lock acquisition";
-  release = await lockfile.lock(home, {
-    lockfilePath: join(home, ".tui.lock"),
-    stale: 30_000,
-    retries: 0,
-    onCompromised: () => {
-      lockCompromised = true;
-      storage?.invalidate();
-      console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
-      app.quit();
-    },
+  release = await acquireHomeLease(home, () => {
+    lockCompromised = true;
+    storage?.invalidate();
+    console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
+    app.quit();
   });
   startupStage = "storage compatibility check";
   const maintenance = await storageWorker(home, join(__dirname, "storage-worker.cjs"));
@@ -267,6 +282,7 @@ async function main() {
   if (!closing) {
     install = await setupReleaseMenu(
       () => !closing,
+      installation,
       () => {
         installAfterClose = true;
         app.quit();

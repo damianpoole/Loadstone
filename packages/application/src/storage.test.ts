@@ -149,6 +149,25 @@ describe("shared storage preflight", () => {
     expect(readRow(path, "SELECT version FROM durable_schema")?.version).toBe(1);
   });
 
+  it.each(["active.sqlite", "inactive.sqlite"])(
+    "rejects recovery missing %s instead of creating a blank session",
+    async (omitted) => {
+      new MemoryStore(memoryPath()).close();
+      await legacySession(omitted === "active.sqlite" ? "inactive" : "active");
+      await writeFile(
+        join(home, "backup.json"),
+        JSON.stringify({
+          format: 1,
+          databases: ["memory.sqlite", "sessions/active.sqlite", "sessions/inactive.sqlite"],
+        }),
+      );
+      await expect(prepareStorage(home)).rejects.toThrow(
+        `Incomplete recovery: missing sessions/${omitted}`,
+      );
+      expect(await readdir(home)).not.toContain("backups");
+    },
+  );
+
   it("rejects a partial restore without the matching character database", async () => {
     const path = await legacySession();
     await expect(prepareStorage(home)).rejects.toThrow("Restore the matching memory database");

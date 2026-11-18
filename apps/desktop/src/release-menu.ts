@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { UpdateDownload, type UpdateState } from "./updates";
 import { matchesStableFeed, stableFeed, validSHA512, verifyStagedInstaller } from "./update-trust";
 import { verifyWindowsInstaller } from "./windows-installer";
+import type { acquireInstallationLease } from "./install-lease";
 
 const labels: Record<UpdateState, string> = {
   idle: "Check for updates (GitHub)…",
@@ -51,9 +52,13 @@ async function enabled() {
   }
 }
 
-export async function setupReleaseMenu(canInteract: () => boolean, requestInstall: () => void) {
+export async function setupReleaseMenu(
+  canInteract: () => boolean,
+  installation: Awaited<ReturnType<typeof acquireInstallationLease>> | undefined,
+  requestInstall: () => void,
+) {
   const policy = await enabled();
-  if (!policy) return;
+  if (!policy || (policy.publisher && !installation)) return;
   // Do not log raw URLs, response bodies, paths, or certificate information.
   autoUpdater.logger = null;
   autoUpdater.autoDownload = false;
@@ -192,9 +197,10 @@ export async function setupReleaseMenu(canInteract: () => boolean, requestInstal
         if (
           !installer ||
           !expectedHash ||
+          !installation ||
           (await verifyWindowsInstaller(installer, policy.publisher, {
             sha512: expectedHash,
-            launch: true,
+            launch: await installation.beginUpdate(),
           }))
         )
           throw new Error("Could not launch the verified Windows update.");

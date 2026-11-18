@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-24.04]
+        os: [windows-latest, macos-15, ubuntu-24.04]
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
@@ -67,6 +67,7 @@ jobs:
           $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           $env:LOADSTONE_SMOKE_EXECUTABLE = "$destination\Loadstone.exe"
+          $env:LOADSTONE_SMOKE_NSIS_PATH = $installer.FullName
           pnpm run desktop:smoke
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4

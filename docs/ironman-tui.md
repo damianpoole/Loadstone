@@ -349,7 +349,8 @@ Default location (`LOADSTONE_HOME` overrides this):
   exports/<UUID>.json    Explicit character exports
   backups/manual-*/     Explicit all-character/session backups
   backups/pre-migration-*/  Full snapshots before a schema upgrade
-  .tui.lock/             Exclusive ownership heartbeat (temporary)
+  .home-owner.sqlite    OS-backed lease (not character data)
+  .tui.lock/             Compatibility guard for older versions
   cache/                 Existing wiki cache, independently configurable
 ```
 
@@ -378,8 +379,10 @@ For offline recovery:
    earliest relevant `pre-migration-*` snapshot and a version that supports its
    schemas. Restoration discards progress made after that snapshot in the restored
    copy. Do not assume that reinstalling an older binary rolls back the databases.
-3. Copy `memory.sqlite` (if present) and the whole `sessions/` folder from the
-   snapshot into an **empty** directory. Run a compatible app with `LOADSTONE_HOME`
+3. Copy `backup.json`, `memory.sqlite` (if present), and the whole `sessions/`
+   folder from the snapshot into an **empty** directory. A current app checks the
+   manifest for missing files before it opens storage. Older backups without a
+   manifest require a manual file check. Run a compatible app with `LOADSTONE_HOME`
    pointing there and verify characters and conversations before switching homes.
    Credentials are intentionally excluded; reconnect through normal app controls.
    Keep both the originals and the snapshot until recovery is verified.
@@ -390,9 +393,11 @@ For permanent local deletion, quit every instance and delete the companion's
 Provider retention is separate from local deletion. A fresh isolated
 `LOADSTONE_HOME` is useful for testing without touching a real account.
 
-Only one process may own a home at a time. A second TUI refuses to start. After a
-hard crash, allow roughly 30 seconds for a stale heartbeat lock to expire before
-reopening. Do not manually remove the lock while another instance is running.
+Only one process may own a home at a time. The current desktop or TUI can reclaim
+its own marked lock after a crash once the OS lease is free. Older builds cannot
+reclaim that marked lock. A current app will not remove an unmarked directory left
+by an older build; let that build recover its lock and close it before upgrading.
+Never remove lock files while another instance could be running.
 
 ## Architecture and durability
 

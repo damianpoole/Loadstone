@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { migrateSessionStorage, SESSION_SCHEMA_VERSION } from "@loadstone/agent";
@@ -169,6 +169,44 @@ async function snapshot(
   }
 }
 
+async function verifyRestoration(home: string, sources: Database[]) {
+  const contents = await readFile(join(home, "backup.json"), "utf8").catch((error: unknown) => {
+    if (!missing(error)) throw error;
+  });
+  if (contents === undefined) return;
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(contents);
+  } catch {
+    throw new StorageUpgradeError(
+      "Cannot read the recovery manifest. Re-copy backup.json from the snapshot.",
+    );
+  }
+  if (
+    !manifest ||
+    typeof manifest !== "object" ||
+    !("format" in manifest) ||
+    manifest.format !== 1 ||
+    !("databases" in manifest) ||
+    !Array.isArray(manifest.databases)
+  )
+    throw new StorageUpgradeError(
+      "Cannot read the recovery manifest. Re-copy backup.json from the snapshot.",
+    );
+  const present = new Set(sources.map(({ relativePath }) => relativePath));
+  for (const expected of manifest.databases) {
+    if (
+      typeof expected !== "string" ||
+      (expected !== "memory.sqlite" && !/^sessions\/[^/\\:]+\.sqlite$/.test(expected))
+    )
+      throw new StorageUpgradeError("Invalid database path in the recovery manifest.");
+    if (!present.has(expected))
+      throw new StorageUpgradeError(
+        `Incomplete recovery: missing ${expected}. Copy it from the same snapshot before opening this home.`,
+      );
+  }
+}
+
 /** Caller holds the shared home lock; no other Loadstone writer may run. */
 export async function prepareStorage(
   home: string,
@@ -176,6 +214,7 @@ export async function prepareStorage(
 ) {
   await assertOwned();
   const sources = await databases(home);
+  await verifyRestoration(home, sources);
   const outdated = sources.filter(
     (source) =>
       schema(source) < (source.kind === "memory" ? MEMORY_SCHEMA_VERSION : SESSION_SCHEMA_VERSION),

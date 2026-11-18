@@ -191,14 +191,16 @@ package-install `engines` field.
 
 For this slice the default remains `~/.loadstone`, overridden by `LOADSTONE_HOME`.
 This gives existing users their characters and conversations without an automatic
-copy/migration. Desktop and TUI both take the **same `.tui.lock` directory lock**
-before opening SQLite. A second instance must refuse to open that home. Separate
-homes can be used for independent previews. Do not delete a live lock manually.
+copy/migration. Desktop and TUI take the same OS-backed lease in `.home-owner.sqlite`
+before opening character data, and keep a nonempty `.tui.lock` directory to exclude
+legacy clients. A suspended process does not lose its lease; the OS releases it
+on exit. Separate homes can be used for independent previews. Never delete these
+lock files while an instance could still be running.
 
 Closing the desktop waits for controller shutdown and durable storage closure,
 then releases ownership. Closing may wait for an in-flight auth/network operation;
-force-quitting instead leaves recovery to SQLite/pi-durable and the stale-lock
-heartbeat policy. Main-process crashes are not guaranteed graceful shutdowns.
+force-quitting leaves recovery to SQLite/pi-durable. Relaunch with the current
+app to recover a marked lock left by a crash. Main-process crashes are not guaranteed graceful shutdowns.
 
 Desktop and TUI check memory (`PRAGMA user_version`) and every saved conversation
 (pi-durable's `durable_schema`) under the shared lock, before opening writable
@@ -215,7 +217,7 @@ Each database migration is atomic, but the collection is not one transaction. If
 upgrade is interrupted, keep the earliest complete pre-migration snapshot; retrying
 can finish the remaining migrations or create another snapshot of the intermediate
 state. Ignore any `.partial-*` backup directory. A storage maintenance worker keeps
-the lock heartbeat responsive during scans/migrations. It checks lock ownership
+the UI responsive during scans/migrations. It checks lock ownership
 before publishing snapshots and before each migration. See [offline recovery](ironman-tui.md#storage-backup-and-privacy) before
 attempting a rollback. The schema number alone does not prove runtime compatibility;
 review the pin, record encoding and auth SDK behavior on every runtime upgrade.

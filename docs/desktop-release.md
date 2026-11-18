@@ -32,8 +32,11 @@ rights and any obligations not captured by license texts before publishing.
 
 ## Protected candidate build
 
-1. In GitHub, create `desktop-release-macos` and `desktop-release-windows` as
-   protected environments. Restrict deployments to `main`, require an independent
+1. Set up a **private**, reviewer-restricted `damianpoole/Loadstone-release` mirror.
+   Copy the reviewed source commits into its protected `main`. The signed workflow
+   refuses the public source repository because repository readers can download
+   Actions artifacts. In the private mirror, create `desktop-release-macos` and
+   `desktop-release-windows` as protected environments. Restrict deployments to `main`, require an independent
    reviewer and prevent self-approval. Protect `main` and release tags; restrict
    Releases, environment editing and secrets to designated maintainers. Do not
    put signing credentials in repository-wide secrets, PR checks or local previews.
@@ -50,7 +53,10 @@ rights and any obligations not captured by license texts before publishing.
    intended public-trust Azure Trusted Signing profile. `WINDOWS_PUBLISHER` must
    be the exact full `Get-AuthenticodeSignature` certificate `Subject` (starting
    `CN=`), not a friendly label. The workflow checks the chain, subject and timestamp
-   of both the installer and executable. Do not waive checks if provider setup fails.
+   of both the installer and executable. Before credentials are exposed, it verifies
+   the exact Microsoft Trusted Signing Client 1.0.95 package SHA-256 and locates the
+   signed Windows SDK SignTool. The signing hook uses only those tools; it does not
+   install modules from PSGallery. Do not waive checks if provider setup fails.
 4. Review a release version bump to `apps/desktop/package.json` (plain, strictly
    increasing `major.minor.patch`). Review frozen dependencies plus `pnpm audit`,
    Electron/Chromium/Node and SDK security advisories, and license differences.
@@ -84,7 +90,14 @@ when Windows cannot verify. The installer path is checked even on cache hits and
 its digest and signing identity are rechecked while Windows holds the path's
 regular directories and executable against replacement through process creation.
 An updater cache redirected through a Windows junction/reparse point is not
-eligible for in-app installation; use the signed installer manually. macOS Squirrel verifies the app's signing
+eligible for in-app installation; use the signed installer manually. Windows stable
+permits only one active copy of the same installation, regardless of its data home.
+The updater blocks new copies during installer handoff; NSIS never forcibly closes
+an existing app. The updater helper clears the barrier when NSIS exits. If the
+helper itself is killed and leaves a `.pending` file in `~/.loadstone-installations`,
+first verify in Task Manager that the installer and update helper have exited,
+then remove that barrier and restart; do not remove it during an update.
+macOS Squirrel verifies the app's signing
 identity before replacement. Prereleases and downgrades are disabled. Rotate signing
 credentials without changing identity, or plan a separately reviewed migration/manual
 install if identity changes.
@@ -104,7 +117,9 @@ forward version over reverting the feed; rolling back binaries cannot undo migra
 - On a clean non-admin **Windows 11 x64** machine with no Node/pi/build tooling:
   verify publisher, install in the standard per-user location and exercise an NSIS
   `/D=` path with spaces, open a home with data, upgrade,
-  then uninstall and reinstall. Confirm character memory, chat and credentials remain.
+  then uninstall and reinstall. Launch a second copy with another data home while
+  the first is writing, and try opening the app during update handoff. Confirm
+  the second copy is blocked and character memory, chat and credentials remain.
 - On clean **macOS 14+ arm64**: download through a browser so Gatekeeper sees quarantine,
   verify DMG/app notarization, install as an ordinary user and repeat upgrade/reinstall.
   Do not remove quarantine or weaken security policy to make the test pass.

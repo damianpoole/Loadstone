@@ -22,7 +22,6 @@
     "@loadstone/application": "workspace:*",
     "@loadstone/tsconfig": "workspace:*",
     "@types/node": "^24.0.0",
-    "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "electron": "45.2.1",
@@ -72,6 +71,7 @@
       ]
     },
     "nsis": {
+      "include": "packaging/no-force-close.nsh",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

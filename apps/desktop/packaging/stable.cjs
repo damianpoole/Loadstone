@@ -1,5 +1,8 @@
 // This config is used only by the protected signed-candidate workflow. It never publishes.
-const { writeFile } = require("node:fs/promises");
+const { execFile } = require("node:child_process");
+const { mkdtemp, rm, writeFile } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
+const { promisify } = require("node:util");
 const { join } = require("node:path");
 const { build, version } = require("../package.json");
 
@@ -26,6 +29,8 @@ if (windows) {
     "AZURE_TENANT_ID",
     "AZURE_CLIENT_ID",
     "AZURE_CLIENT_SECRET",
+    "LOADSTONE_SIGNTOOL",
+    "LOADSTONE_SIGN_DLIB",
   );
   if (!publisher.startsWith("CN="))
     throw new Error("Set the exact Authenticode signing certificate Subject.");
@@ -64,6 +69,7 @@ module.exports = {
   dmg: { sign: true, writeUpdateInfo: false }, // The updater downloads ZIP, not the DMG.
   nsis: {
     ...build.nsis,
+    runAfterFinish: false,
     oneClick: true,
     perMachine: false,
     allowToChangeInstallationDirectory: false,
@@ -73,11 +79,40 @@ module.exports = {
     ...build.win,
     ...(windows
       ? {
-          azureSignOptions: {
-            publisherName: publisher,
-            endpoint: process.env.LOADSTONE_SIGN_ENDPOINT,
-            codeSigningAccountName: process.env.LOADSTONE_SIGN_ACCOUNT,
-            certificateProfileName: process.env.LOADSTONE_SIGN_PROFILE,
+          signtoolOptions: {
+            publisherName: [publisher],
+            signingHashAlgorithms: ["sha256"],
+            async sign({ path }) {
+              const temp = await mkdtemp(join(tmpdir(), "loadstone-sign-"));
+              try {
+                const metadata = join(temp, "signing.json");
+                await writeFile(
+                  metadata,
+                  JSON.stringify({
+                    Endpoint: process.env.LOADSTONE_SIGN_ENDPOINT,
+                    CodeSigningAccountName: process.env.LOADSTONE_SIGN_ACCOUNT,
+                    CertificateProfileName: process.env.LOADSTONE_SIGN_PROFILE,
+                  }),
+                  { flag: "wx" },
+                );
+                await promisify(execFile)(process.env.LOADSTONE_SIGNTOOL, [
+                  "sign",
+                  "/fd",
+                  "SHA256",
+                  "/tr",
+                  "http://timestamp.acs.microsoft.com",
+                  "/td",
+                  "SHA256",
+                  "/dlib",
+                  process.env.LOADSTONE_SIGN_DLIB,
+                  "/dmdf",
+                  metadata,
+                  path,
+                ]);
+              } finally {
+                await rm(temp, { recursive: true, force: true });
+              }
+            },
           },
         }
       : {}),
