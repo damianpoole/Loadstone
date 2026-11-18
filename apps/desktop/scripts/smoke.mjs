@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -297,9 +297,24 @@ try {
     true,
     "IPC refuses legacy slash commands",
   );
-  await assert.rejects(lockfile.lock(home, { lockfilePath: join(home, ".tui.lock"), retries: 0 }), {
-    code: "ELOCKED",
-  });
+  const leasePath = join(home, ".tui.lock");
+  const ownerMarker = await readdir(leasePath);
+  assert.match(ownerMarker[0], /^loadstone-owner-v1-/);
+  await assert.rejects(lockfile.lock(home, { lockfilePath: leasePath, retries: 0 }));
+  assert.deepEqual(await readdir(leasePath), ownerMarker);
+  // Alter a copy, not the live lease: on macOS an older mtime can also change birthtime.
+  const stale = join(home, "legacy stale probe");
+  const staleLease = join(stale, ".tui.lock");
+  await mkdir(stale);
+  await cp(leasePath, staleLease, { recursive: true });
+  const mtime = new Date(Date.now() - 60_000);
+  await utimes(staleLease, mtime, mtime);
+  await assert.rejects(lockfile.lock(stale, { lockfilePath: staleLease, retries: 0 }));
+  assert.deepEqual(
+    await readdir(staleLease),
+    ownerMarker,
+    "legacy probe must not remove a stale marked guard",
+  );
   if (process.env.LOADSTONE_SMOKE_NSIS_PATH) {
     await assert.rejects(
       promisify(execFile)(process.env.LOADSTONE_SMOKE_NSIS_PATH, ["/S", "--updated"], {

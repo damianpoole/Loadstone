@@ -81,18 +81,19 @@ export async function setupReleaseMenu(
     if (installer) await rm(installer, { force: true }).catch(() => {});
     installer = undefined;
   };
+  let installing = false;
   let installTimer: ReturnType<typeof setTimeout> | undefined;
   const installFailed = () => {
-    if (!installTimer) return;
+    if (!installing) return;
+    installing = false;
     clearTimeout(installTimer);
-    installTimer = undefined;
     dialog.showErrorBox(
       "Loadstone update not installed",
       "Your data was closed safely. Reopen Loadstone to retry, or install the signed release manually.",
     );
     app.quit();
   };
-  autoUpdater.on("error", installFailed);
+  if (!policy.publisher) autoUpdater.on("error", installFailed);
 
   let confirming = false;
   const click = async () => {
@@ -191,7 +192,8 @@ export async function setupReleaseMenu(
   return async () => {
     // Squirrel.Mac can still fail native signature verification at this point.
     // Do not leave a storage-closed app hanging if native installation stalls.
-    installTimer = setTimeout(installFailed, 90_000);
+    installing = true;
+    if (!policy.publisher) installTimer = setTimeout(installFailed, 90_000);
     try {
       if (policy.publisher) {
         if (
@@ -204,8 +206,7 @@ export async function setupReleaseMenu(
           }))
         )
           throw new Error("Could not launch the verified Windows update.");
-        clearTimeout(installTimer);
-        installTimer = undefined;
+        installing = false;
         app.quit();
       } else {
         autoUpdater.quitAndInstall(false, true);

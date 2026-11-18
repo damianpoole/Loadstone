@@ -144,26 +144,22 @@ public sealed class LoadstonePathGuard : IDisposable {
         stdio: ["ignore", "pipe", "ignore"],
       });
       const failure = "Windows installation could not start.";
-      const timer = setTimeout(() => resolve(failure), 30_000);
+      // A timeout cannot prove a detached verifier will not launch later.
+      // Wait for an explicit start acknowledgement or a definitive process exit.
       let output = "";
       child.stdout.setEncoding("utf8").on("data", (text: string) => {
         output = (output + text).slice(-1024);
         if (output.includes("LOADSTONE_INSTALLER_STARTED")) {
-          clearTimeout(timer);
           child.unref();
           resolve(null);
         }
       });
       child.once("error", () => {
-        clearTimeout(timer);
         void rm(handoff.barrier, { force: true })
           .catch(() => {})
           .finally(() => resolve(failure));
       });
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve(failure);
-      });
+      child.once("close", () => resolve(failure));
       return;
     }
     execFile(shell, args, { timeout: 30_000, windowsHide: true, env }, (error, _stdout, stderr) =>

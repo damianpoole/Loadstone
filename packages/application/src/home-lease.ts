@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const marker = "loadstone-owner-v1";
+const markerPrefix = "loadstone-owner-v1-";
+const recognized = /^loadstone-owner-v1-[0-9a-f-]{36}$/;
+const identify = async (path: string) => {
+  const { dev, ino, birthtimeNs } = await lstat(path, { bigint: true });
+  return `${dev}:${ino}:${birthtimeNs}`;
+};
 const locked = () =>
   Object.assign(new Error("This Loadstone data directory is already owned."), { code: "ELOCKED" });
 
@@ -24,29 +29,49 @@ export async function acquireHomeLease(home: string, onCompromised: () => void) 
   const close = acquireProcessLease(join(home, ".home-owner.sqlite"));
   const path = join(home, ".tui.lock");
   const token = randomUUID();
+  const marker = join(path, `${markerPrefix}${token}`);
   const retired = join(home, `.retired-lease-${token}`);
-  const assertOwned = async () => {
-    if ((await readFile(join(path, marker), "utf8").catch(() => undefined)) !== token)
-      throw new Error("Exclusive storage ownership was lost.");
+  const create = async () => {
+    const started = Date.now();
+    const monotonic = performance.now();
+    await mkdir(path, { mode: 0o700 });
+    const original = await identify(path);
+    // The empty compatibility directory is visible during bootstrap. Never
+    // adopt a directory observed after even the shortest legacy stale interval.
+    if (Math.abs(Date.now() - started) >= 5000 || performance.now() - monotonic >= 5000)
+      throw locked();
+    await writeFile(marker, "", { flag: "wx", mode: 0o600 });
+    if ((await identify(path).catch(() => undefined)) !== original) {
+      // Remove only this attempt's unique marker, not the successor directory.
+      await rm(marker, { force: true }).catch(() => {});
+      throw locked();
+    }
+    return original;
   };
+  let identity: string;
   try {
     try {
-      await mkdir(path, { mode: 0o700 });
+      identity = await create();
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
-      // We hold the OS lock, so only a crashed modern owner can have left this
-      // marker. An unmarked legacy directory must never be reaped by this code.
-      const previous = await readFile(join(path, marker), "utf8").catch(() => "");
-      if (!/^[0-9a-f-]{36}$/.test(previous)) throw locked();
+      // We hold the OS lock. An unmarked legacy directory is not ours to reap.
+      const previous = await readdir(path).catch(() => []);
+      if (previous.length !== 1 || !recognized.test(previous[0])) throw locked();
       await rename(path, retired);
       await rm(retired, { recursive: true, force: true });
-      await mkdir(path, { mode: 0o700 });
+      identity = await create();
     }
-    await writeFile(join(path, marker), token, { flag: "wx", mode: 0o600 });
   } catch (error) {
     close();
     throw error;
   }
+  const assertOwned = async () => {
+    if (
+      (await identify(path).catch(() => undefined)) !== identity ||
+      !(await lstat(marker).catch(() => undefined))
+    )
+      throw new Error("Exclusive storage ownership was lost.");
+  };
   const check = setInterval(() => {
     void assertOwned().catch(() => {
       clearInterval(check);
