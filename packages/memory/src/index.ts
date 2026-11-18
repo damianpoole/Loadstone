@@ -145,6 +145,8 @@ export function validateChange(change: Change): void {
   }
 }
 
+export const MEMORY_SCHEMA_VERSION = 2;
+
 /** Single-process local repository. The app holds a directory lock for its lifetime. */
 export class MemoryStore {
   private readonly db: DatabaseSync;
@@ -157,16 +159,17 @@ export class MemoryStore {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
-    this.db.exec(
-      "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;",
-    );
-    const version = this.db.prepare("PRAGMA user_version").get()?.user_version as number;
-    if (version > 2) {
-      this.db.close();
-      throw new Error("Memory database is newer than this app. Upgrade Loadstone.");
-    }
-    if (version === 0)
-      this.db.exec(`BEGIN IMMEDIATE;
+    try {
+      const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
+      if (typeof version !== "number" || version < 0)
+        throw new Error("Unsupported memory schema. Use a compatible version of Loadstone.");
+      if (version > MEMORY_SCHEMA_VERSION)
+        throw new Error("Memory database is newer than this app. Upgrade Loadstone.");
+      this.db.exec(
+        "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;",
+      );
+      if (version === 0)
+        this.db.exec(`BEGIN IMMEDIATE;
       CREATE TABLE characters (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, mode TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE facts (characterId TEXT NOT NULL REFERENCES characters(id), kind TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(characterId, kind, key));
       CREATE TABLE operations (id TEXT PRIMARY KEY, characterId TEXT NOT NULL REFERENCES characters(id), request TEXT NOT NULL, receipt TEXT NOT NULL, createdAt INTEGER NOT NULL);
@@ -174,10 +177,14 @@ export class MemoryStore {
       CREATE TABLE sessions (id TEXT PRIMARY KEY, characterId TEXT NOT NULL REFERENCES characters(id), createdAt INTEGER NOT NULL);
       CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       PRAGMA user_version=1; COMMIT;`);
-    if (version < 2)
-      this.db.exec(`BEGIN IMMEDIATE;
+      if (version < 2)
+        this.db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
       PRAGMA user_version=2; COMMIT;`);
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
   close() {
     this.db.close();

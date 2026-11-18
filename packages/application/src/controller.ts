@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   MemoryStore,
@@ -21,6 +21,7 @@ import {
   type AgentView,
   type ModelRef,
 } from "@loadstone/agent";
+import { backupStorage } from "./storage";
 
 export const HELP = `Chat normally to ask for advice or report progress. Clear facts are saved automatically, with provenance.
 /character [RSN] — list characters or select/create one (default Ironman)
@@ -507,10 +508,7 @@ export class Controller {
       await this.companion?.close();
       this.companion = undefined;
       try {
-        const directory = join(this.home, "backups", randomUUID());
-        await mkdir(directory, { recursive: true, mode: 0o700 });
-        await this.memory.backup(join(directory, "memory.sqlite"));
-        await cp(join(this.home, "sessions"), join(directory, "sessions"), { recursive: true });
+        const directory = await backupStorage(this.home);
         this.update({
           notice: this.graphical
             ? `Backup saved to ${directory}. Contains private memory and conversations, not credentials. Keep this folder intact. Restoration currently requires the documented offline recovery procedure; there is no in-app restore yet.`

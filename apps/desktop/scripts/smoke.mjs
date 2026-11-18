@@ -2,7 +2,7 @@
 // LOADSTONE_SMOKE_EXECUTABLE points at an unpacked/installed app to test packaging.
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,7 +76,38 @@ try {
     true,
     "startup window is visible",
   );
-  if (executable) assert.equal(runtime.packaged, true);
+  if (executable) {
+    assert.equal(runtime.packaged, true);
+    const resources = await application.evaluate(() => process.resourcesPath);
+    const notices = join(resources, "third-party-notices");
+    assert.match(
+      await readFile(join(notices, "main.cjs.NOTICES.txt"), "utf8"),
+      /electron-updater@/,
+    );
+    const rendererNotices = await readdir(join(notices, "renderer", "assets"));
+    assert.ok(rendererNotices.some((file) => file.endsWith(".NOTICES.txt")));
+    const runtimeNotices = process.platform === "darwin" ? resources : dirname(executable);
+    await readFile(join(runtimeNotices, "LICENSE.electron.txt"));
+    await readFile(join(runtimeNotices, "LICENSES.chromium.html"));
+    const expectsUpdates = process.env.LOADSTONE_SMOKE_EXPECT_UPDATES === "1";
+    if (expectsUpdates) {
+      assert.equal(
+        await application.evaluate(async ({ Menu }) => {
+          for (let i = 0; i < 40; i++) {
+            const menu = Menu.getApplicationMenu()?.items.find(({ label }) => label === "Updates");
+            if (menu?.submenu?.items[0].label === "Check for updates (GitHub)…") return true;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          return false;
+        }),
+        true,
+        "stable update menu is ready without a network request",
+      );
+    } else {
+      await assert.rejects(readFile(join(resources, "loadstone-stable.json")), { code: "ENOENT" });
+      await assert.rejects(readFile(join(resources, "app-update.yml")), { code: "ENOENT" });
+    }
+  }
   assert.equal(await page.evaluate(() => typeof window.require), "undefined");
   assert.equal(await page.evaluate(() => typeof window.process), "undefined");
   assert.equal(
@@ -122,7 +153,6 @@ try {
       (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text"),
   );
   if (encryptionAvailable) {
-    const { readFile } = await import("node:fs/promises");
     assert.equal(
       (await readFile(join(home, "credentials.enc"))).includes(
         Buffer.from("private-smoke-key-not-real"),
@@ -262,7 +292,10 @@ try {
   database
     .prepare("INSERT INTO facts VALUES (?, ?, ?, ?)")
     .run(snapshot.character.id, "skill", "herblore", JSON.stringify(fact));
+  // Simulate the preceding memory format alongside the real durable chat.
+  database.exec("ALTER TABLE sessions DROP COLUMN title; PRAGMA user_version=1;");
   database.close();
+  const credentials = await readFile(auth);
   ({ application, page } = await launch());
   await page.getByRole("heading", { name: "SmokeIron", exact: true }).waitFor();
   await page.getByText("Smoke test fixture", { exact: true }).waitFor();
@@ -274,6 +307,16 @@ try {
   const restored = await page.evaluate(() => window.loadstone.snapshot());
   assert.equal(restored.session.id, snapshot.session.id);
   assert.equal(restored.facts[0].value, 90);
+  assert.equal(restored.connection.mode, "shared");
+  assert.deepEqual(await readFile(auth), credentials);
+  const [upgrade] = await readdir(join(home, "backups"));
+  assert.match(upgrade, /^pre-migration-/);
+  const backup = join(home, "backups", upgrade);
+  assert.deepEqual((await readdir(backup)).sort(), ["backup.json", "memory.sqlite", "sessions"]);
+  assert.deepEqual(await readdir(join(backup, "sessions")), [`${snapshot.session.id}.sqlite`]);
+  const oldMemory = new DatabaseSync(join(backup, "memory.sqlite"), { readOnly: true });
+  assert.equal(oldMemory.prepare("PRAGMA user_version").get().user_version, 1);
+  oldMemory.close();
   // Browser clipboard access remains write-only; confirm the actual native clipboard changed.
   assert.equal(
     await page.evaluate(
@@ -357,7 +400,7 @@ try {
   console.log(
     "Desktop smoke passed:",
     runtime,
-    "— isolated renderer, pi SDK, memory, session restoration, lock release",
+    "— isolated renderer, pi SDK, legacy upgrade, credentials, chat replay, lock release",
   );
 } finally {
   await running?.close();

@@ -63,7 +63,7 @@ jobs:
         run: |
           $installer = Get-ChildItem apps/desktop/release/*.exe | Select-Object -First 1
           if (-not $installer) { throw "NSIS installer missing" }
-          $destination = "$env:RUNNER_TEMP\LoadstoneInstalled"
+          $destination = "$env:RUNNER_TEMP\Loadstone Installed Preview"
           $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
           $env:LOADSTONE_SMOKE_EXECUTABLE = "$destination\Loadstone.exe"

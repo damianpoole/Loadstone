@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { render } from "ink";
+import { prepareStorage } from "@loadstone/application";
 import lockfile from "proper-lockfile";
 import { App } from "./app";
 import { Controller, HELP } from "./controller";
@@ -48,7 +49,10 @@ async function main() {
   process.on("SIGINT", quit);
   process.stdout.write("\u001b[?1049h");
   try {
+    const backup = await prepareStorage(home);
+    if (closing) return;
     controller = new Controller(home);
+    if (backup) controller.report(`Local storage upgraded. Pre-upgrade backup: ${backup}`);
     instance = render(<App controller={controller} onQuit={quit} />, {
       exitOnCtrlC: false,
       patchConsole: true,

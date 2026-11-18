@@ -14,7 +14,15 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import lockfile from "proper-lockfile";
-import { Controller, DesktopService, DesktopAuth } from "@loadstone/application";
+import {
+  Controller,
+  DesktopService,
+  DesktopAuth,
+  prepareStorage,
+  StorageUpgradeError,
+} from "@loadstone/application";
+import { setupReleaseMenu } from "./release-menu";
+import { closeForExit } from "./updates";
 import { channels } from "./protocol";
 import { contentSecurityPolicy, trustedFrame } from "./security";
 
@@ -30,6 +38,9 @@ let release: (() => Promise<void>) | undefined;
 let unsubscribe: (() => void) | undefined;
 let closing = false;
 let closed = false;
+let installAfterClose = false;
+let install: (() => void) | undefined;
+let lockCompromised = false;
 
 app.on("before-quit", (event) => {
   if (closed) return;
@@ -37,23 +48,23 @@ app.on("before-quit", (event) => {
   if (closing) return;
   closing = true;
   void (async () => {
-    try {
-      unsubscribe?.();
-      await authentication?.close();
-      await controller?.close();
-    } catch {
-      console.error(
-        "[Loadstone] Storage did not close cleanly. Reopen the app to recover durable work.",
-      );
+    await startup;
+    unsubscribe?.();
+    const clean = await closeForExit([
+      () => authentication?.close(),
+      () => controller?.close(),
+      () => release?.(),
+    ]);
+    if (!clean) {
+      console.error("[Loadstone] Local storage did not shut down cleanly.");
       dialog.showErrorBox(
         "Loadstone shutdown",
-        "Storage could not close cleanly. Reopen Loadstone to recover durable work.",
+        "Local storage did not shut down cleanly. No update was installed. Reopen Loadstone to recover durable work.",
       );
-    } finally {
-      await release?.().catch(() => {});
-      closed = true;
-      app.quit();
     }
+    closed = true;
+    if (clean && !lockCompromised && installAfterClose && install) install();
+    else app.quit();
   })();
 });
 app.on("window-all-closed", () => app.quit());
@@ -70,6 +81,7 @@ async function main() {
     stale: 30_000,
     retries: 0,
     onCompromised: () => {
+      lockCompromised = true;
       console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
       dialog.showErrorBox(
         "Loadstone storage lock",
@@ -78,6 +90,9 @@ async function main() {
       app.quit();
     },
   });
+  startupStage = "storage compatibility check";
+  const backup = await prepareStorage(home);
+  if (closing) return;
   startupStage = "character memory setup";
   const encryptionAvailable = () =>
     safeStorage.isEncryptionAvailable() &&
@@ -100,6 +115,7 @@ async function main() {
     (url) => shell.openExternal(url),
   );
   await authentication.initialize();
+  if (closing) return;
   const auth = authentication;
   controller = new Controller(home, undefined, () => auth.connection(), true);
   const service = new DesktopService(controller, auth, async (url) => {
@@ -117,8 +133,9 @@ async function main() {
   });
   controller.state = {
     ...controller.state,
-    notice:
-      "Select or create a character to begin. Your last conversation resumes automatically. Memory is local; chat context is sent to your selected AI provider. Never paste credentials into chat.",
+    notice: backup
+      ? `Local storage upgraded. Pre-upgrade backup: ${backup}`
+      : "Select or create a character to begin. Your last conversation resumes automatically. Memory is local; chat context is sent to your selected AI provider. Never paste credentials into chat.",
   };
 
   const renderer = pathToFileURL(join(__dirname, "renderer", "index.html")).href;
@@ -226,18 +243,29 @@ async function main() {
   startupStage = "renderer loading";
   await window.loadURL(renderer);
   console.log("[Loadstone] Desktop window loaded.");
+  if (!closing) {
+    install = await setupReleaseMenu(
+      () => !closing,
+      () => {
+        installAfterClose = true;
+        app.quit();
+      },
+    );
+  }
   await initialization;
 }
 
-void main().catch((error: unknown) => {
-  console.error(`[Loadstone] Startup failed during ${startupStage}:`, error);
+const startup = main().catch((error: unknown) => {
+  console.error(`[Loadstone] Startup failed during ${startupStage}.`);
   process.exitCode = 1;
-  const locked = (error as NodeJS.ErrnoException).code === "ELOCKED";
+  const locked = error instanceof Error && "code" in error && error.code === "ELOCKED";
   dialog.showErrorBox(
     "Loadstone could not start",
-    locked
-      ? "This character directory is already open in Loadstone desktop or the TUI. Close the other app first."
-      : "Loadstone could not open its local storage or application resources. Check permissions and the LOADSTONE_HOME setting. Your data has not been deleted.",
+    error instanceof StorageUpgradeError
+      ? error.message
+      : locked
+        ? "This character directory is already open in Loadstone desktop or the TUI. Close the other app first."
+        : "Loadstone could not open its local storage or application resources. Check permissions and the LOADSTONE_HOME setting. Your data has not been deleted.",
   );
   app.quit();
 });

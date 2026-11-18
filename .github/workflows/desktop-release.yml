@@ -1,0 +1,142 @@
+name: Desktop signed candidates
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable version from apps/desktop/package.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-signed-candidates
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    if: github.repository == 'damianpoole/Loadstone' && github.ref == 'refs/heads/main'
+    name: Signed candidate (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    environment: desktop-release-${{ matrix.platform }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-2025
+          - platform: macos
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24.19.0"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - name: Sign Windows x64 candidate via Azure Trusted Signing
+        if: matrix.platform == 'windows'
+        working-directory: apps/desktop
+        shell: pwsh
+        env:
+          LOADSTONE_RELEASE_VERSION: ${{ inputs.version }}
+          LOADSTONE_WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+          LOADSTONE_SIGN_ENDPOINT: ${{ vars.SIGN_ENDPOINT }}
+          LOADSTONE_SIGN_ACCOUNT: ${{ vars.SIGN_ACCOUNT }}
+          LOADSTONE_SIGN_PROFILE: ${{ vars.SIGN_PROFILE }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: pnpm exec electron-builder --config packaging/stable.cjs --win --x64 --publish never
+      - name: Verify Windows signature chain, timestamp and update metadata
+        if: matrix.platform == 'windows'
+        working-directory: apps/desktop
+        shell: pwsh
+        env:
+          LOADSTONE_WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
+        run: |
+          $installer = @(Get-ChildItem release/*.exe)
+          if ($installer.Count -ne 1) { throw "Expected one NSIS installer" }
+          foreach ($path in @($installer[0].FullName, "release/win-unpacked/Loadstone.exe")) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $path
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -cne $env:LOADSTONE_WINDOWS_PUBLISHER -or -not $signature.TimeStamperCertificate) {
+              throw "Unexpected or untrusted Authenticode signer/timestamp"
+            }
+          }
+          node scripts/verify-release.mjs
+      - name: Sign and notarize macOS arm64 candidate
+        if: matrix.platform == 'macos'
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          LOADSTONE_RELEASE_VERSION: ${{ inputs.version }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ vars.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          test -n "$APPLE_API_KEY_B64"
+          key_dir="$(mktemp -d)"
+          trap 'rm -rf "$key_dir"' EXIT
+          export APPLE_API_KEY="$key_dir/AuthKey_$APPLE_API_KEY_ID.p8"
+          (umask 077; printf '%s' "$APPLE_API_KEY_B64" | base64 --decode > "$APPLE_API_KEY")
+          pnpm exec electron-builder --config packaging/stable.cjs --mac --arm64 --publish never
+          dmg=(release/*.dmg)
+          test "${#dmg[@]}" -eq 1 && test -f "${dmg[0]}"
+          xcrun notarytool submit "${dmg[0]}" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "${dmg[0]}"
+      - name: Verify macOS Gatekeeper, notarization and update metadata
+        if: matrix.platform == 'macos'
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=release/mac-arm64/Loadstone.app
+          codesign --verify --deep --strict "$app"
+          codesign -dv --verbose=4 "$app" 2>&1 | grep '^Authority=Developer ID Application:'
+          xcrun stapler validate "$app"
+          xcrun stapler validate release/*.dmg
+          spctl --assess --type execute --verbose "$app"
+          node scripts/verify-release.mjs
+      - name: Smoke-test signed app from disk image
+        if: matrix.platform == 'macos'
+        env:
+          LOADSTONE_SMOKE_EXPECT_UPDATES: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mount="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" apps/desktop/release/*.dmg
+          trap 'hdiutil detach "$mount" && rmdir "$mount"' EXIT
+          LOADSTONE_SMOKE_EXECUTABLE="$mount/Loadstone.app/Contents/MacOS/Loadstone" pnpm run desktop:smoke
+      - name: Install and smoke-test signed Windows candidate
+        if: matrix.platform == 'windows'
+        env:
+          LOADSTONE_SMOKE_EXPECT_UPDATES: "1"
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/release/*.exe | Select-Object -First 1
+          $destination = "$env:RUNNER_TEMP\Loadstone Signed Candidate"
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$destination" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer failed: $($result.ExitCode)" }
+          $env:LOADSTONE_SMOKE_EXECUTABLE = "$destination\Loadstone.exe"
+          pnpm run desktop:smoke
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: loadstone-stable-candidate-${{ matrix.platform }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml

@@ -347,7 +347,8 @@ Default location (`LOADSTONE_HOME` overrides this):
   memory.sqlite          Characters, facts, history/receipts, sessions and defaults
   sessions/<UUID>.sqlite pi-durable conversations, tasks, memos and model choices
   exports/<UUID>.json    Explicit character exports
-  backups/<UUID>/        Explicit all-character/session backups
+  backups/manual-*/     Explicit all-character/session backups
+  backups/pre-migration-*/  Full snapshots before a schema upgrade
   .tui.lock/             Exclusive ownership heartbeat (temporary)
   cache/                 Existing wiki cache, independently configurable
 ```
@@ -363,13 +364,25 @@ exports by the app. **Anything you type into chat is stored in its transcript**;
 do not paste credentials. Forget/undo changes active memory but preserves the
 audit trail and old transcript context. It is not a secure erasure feature.
 
-`/backup` closes the active harness, uses SQLite's online backup for memory, copies
-the closed session databases (including any WAL sidecars), then reopens the session.
-The exclusive home-directory lock prevents another TUI from writing during backup.
-To restore, close the app and copy the backup's `memory.sqlite` and `sessions/`
-into an **empty** directory, then run with `LOADSTONE_HOME` pointing there. Do not
-merge SQLite files or omit live WAL files when making your own backups. Exports
-are human-readable portable records; automated JSON import is not implemented.
+`/backup` closes the active harness, uses SQLite's backup API for memory and
+sessions (including committed WAL pages), then reopens the session. Desktop and
+TUI use the same lock and snapshot procedure before an existing database migrates.
+A `backup.json` manifest identifies complete new-style snapshots. Ignore `.partial-*`
+folders. Exports are human-readable records, not whole-home backups.
+
+For offline recovery:
+
+1. Quit **both desktop and TUI**. Keep the original home, including any sidecars,
+   intact. Do not delete a live lock or copy over databases in place.
+2. Choose the completed snapshot from before the failure. For rollback, use the
+   earliest relevant `pre-migration-*` snapshot and a version that supports its
+   schemas. Restoration discards progress made after that snapshot in the restored
+   copy. Do not assume that reinstalling an older binary rolls back the databases.
+3. Copy `memory.sqlite` (if present) and the whole `sessions/` folder from the
+   snapshot into an **empty** directory. Run a compatible app with `LOADSTONE_HOME`
+   pointing there and verify characters and conversations before switching homes.
+   Credentials are intentionally excluded; reconnect through normal app controls.
+   Keep both the originals and the snapshot until recovery is verified.
 
 For permanent local deletion, quit every instance and delete the companion's
 `memory.sqlite` (and its `-wal`/`-shm` sidecars), `sessions/`, `exports/` and
