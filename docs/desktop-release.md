@@ -81,7 +81,8 @@ SHA-512; the metadata is not separately signed. Trust in GitHub's release origin
 release permissions and tag protections is therefore part of the security model.
 Windows verifies Authenticode trust and the exact packaged publisher, failing closed
 when Windows cannot verify. The installer path is checked even on cache hits and
-its digest and signing identity are rechecked just before launch. macOS Squirrel additionally verifies the app's signing
+its digest and signing identity are rechecked with a Windows file handle that denies
+writes and deletion through process creation. macOS Squirrel verifies the app's signing
 identity before replacement. Prereleases and downgrades are disabled. Rotate signing
 credentials without changing identity, or plan a separately reviewed migration/manual
 install if identity changes.

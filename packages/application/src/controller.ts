@@ -94,7 +94,7 @@ export class Controller {
     private readonly openAgent = openCompanion,
     private readonly connect = createCompanionConnection,
     private readonly graphical = false,
-    private readonly makeBackup = () => backupStorage(home),
+    private readonly storage = { backup: () => backupStorage(home), assertOwned: async () => {} },
   ) {
     this.memory = new MemoryStore(join(home, "memory.sqlite"));
   }
@@ -152,21 +152,26 @@ export class Controller {
     await this.activate(character, session);
   }
   private async activate(character: Character, session: ChatSession) {
+    await this.storage.assertOwned();
     const epoch = ++this.epoch;
     await this.companion?.close();
     this.companion = undefined;
+    await this.storage.assertOwned();
     this.memory.setSetting("activeCharacter", character.id);
     this.memory.setSetting(`session:${character.id}`, session.id);
     this.refresh({ character, session, view: emptyView() });
     await mkdir(join(this.home, "sessions"), { recursive: true, mode: 0o700 });
+    const model = await this.defaultModel();
+    const { models } = await this.getConnection();
+    await this.storage.assertOwned();
     this.companion = await this.openAgent({
       graphical: this.graphical,
       path: join(this.home, "sessions", `${session.id}.sqlite`),
       memory: this.memory,
       characterId: character.id,
       sessionId: session.id,
-      model: await this.defaultModel(),
-      models: (await this.getConnection()).models,
+      model,
+      models,
       onChange: (view) => {
         if (epoch === this.epoch && !this.closed) {
           session = this.memory.sessions(character.id).find((s) => s.id === session.id)!;
@@ -183,8 +188,11 @@ export class Controller {
     this.connection = undefined;
     await this.initialize();
   }
-  async cancel() {
+  abortSync() {
     this.syncAbort?.abort();
+  }
+  async cancel() {
+    this.abortSync();
     await this.companion?.cancel();
     this.refresh();
   }
@@ -509,7 +517,7 @@ export class Controller {
       await this.companion?.close();
       this.companion = undefined;
       try {
-        const directory = await this.makeBackup();
+        const directory = await this.storage.backup();
         this.update({
           notice: this.graphical
             ? `Backup saved to ${directory}. Contains private memory and conversations, not credentials. Keep this folder intact. Restoration currently requires the documented offline recovery procedure; there is no in-app restore yet.`
@@ -537,7 +545,7 @@ export class Controller {
   close(): Promise<void> {
     if (!this.closing)
       this.closing = (async () => {
-        this.syncAbort?.abort();
+        this.abortSync();
         await this.operation?.catch(() => {});
         ++this.epoch;
         try {

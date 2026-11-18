@@ -1,10 +1,10 @@
 import { app, dialog, Menu, type MenuItemConstructorOptions } from "electron";
 import { autoUpdater, NsisUpdater } from "electron-updater";
-import { execFile } from "node:child_process";
 import { readFile, rm } from "node:fs/promises";
-import { win32, join } from "node:path";
+import { join } from "node:path";
 import { UpdateDownload, type UpdateState } from "./updates";
 import { matchesStableFeed, stableFeed, validSHA512, verifyStagedInstaller } from "./update-trust";
+import { verifyWindowsInstaller } from "./windows-installer";
 
 const labels: Record<UpdateState, string> = {
   idle: "Check for updates (GitHub)…",
@@ -14,35 +14,6 @@ const labels: Record<UpdateState, string> = {
   ready: "Install downloaded update and restart…",
   failed: "Update failed — check again",
 };
-
-// Use a fixed script (no shell and no interpolation) and fail closed if Windows
-// cannot verify trust or the signed publisher is not the shipped identity.
-function verifyWindowsInstaller(path: string, publisher: string): Promise<string | null> {
-  const command = Buffer.from(
-    "$ErrorActionPreference = 'Stop'; " +
-      "$s = Get-AuthenticodeSignature -LiteralPath $env:LOADSTONE_VERIFY_FILE; " +
-      "if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -cne $env:LOADSTONE_VERIFY_PUBLISHER) { exit 1 }",
-    "utf16le",
-  ).toString("base64");
-  const systemRoot = process.env.SystemRoot;
-  if (!systemRoot || !win32.isAbsolute(systemRoot))
-    return Promise.resolve("Windows trust verification unavailable.");
-  return new Promise((resolve) => {
-    execFile(
-      win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-      ["-NoProfile", "-NonInteractive", "-EncodedCommand", command],
-      {
-        timeout: 30_000,
-        windowsHide: true,
-        env: { ...process.env, LOADSTONE_VERIFY_FILE: path, LOADSTONE_VERIFY_PUBLISHER: publisher },
-      },
-      (error, _stdout, stderr) =>
-        resolve(
-          error || stderr.trim() ? "Windows installer signature could not be verified." : null,
-        ),
-    );
-  });
-}
 
 async function enabled() {
   const windows = process.platform === "win32" && process.arch === "x64";
@@ -217,8 +188,22 @@ export async function setupReleaseMenu(canInteract: () => boolean, requestInstal
     // Do not leave a storage-closed app hanging if native installation stalls.
     installTimer = setTimeout(installFailed, 90_000);
     try {
-      await verify(); // Check the exact path again after storage shutdown, just before launch.
-      if (installTimer) autoUpdater.quitAndInstall(false, true);
+      if (policy.publisher) {
+        if (
+          !installer ||
+          !expectedHash ||
+          (await verifyWindowsInstaller(installer, policy.publisher, {
+            sha512: expectedHash,
+            launch: true,
+          }))
+        )
+          throw new Error("Could not launch the verified Windows update.");
+        clearTimeout(installTimer);
+        installTimer = undefined;
+        app.quit();
+      } else {
+        autoUpdater.quitAndInstall(false, true);
+      }
     } catch {
       await discardInstaller();
       installFailed();

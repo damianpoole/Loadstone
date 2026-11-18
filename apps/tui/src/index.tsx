@@ -61,14 +61,10 @@ async function main() {
     const maintenance = await storageWorker(home, new URL("./storage-worker.js", import.meta.url));
     storage = maintenance;
     if (lockCompromised) maintenance.invalidate();
-    const backup = await maintenance.run("prepare");
+    const backup = await maintenance.prepare();
     await maintenance.assertOwned();
     if (closing) return;
-    controller = new Controller(home, undefined, undefined, false, async () => {
-      const path = await maintenance.run("backup");
-      if (!path) throw new Error("No backup was created.");
-      return path;
-    });
+    controller = new Controller(home, undefined, undefined, false, maintenance);
     if (backup) controller.report(`Local storage upgraded. Pre-upgrade backup: ${backup}`);
     instance = render(<App controller={controller} onQuit={quit} />, {
       exitOnCtrlC: false,

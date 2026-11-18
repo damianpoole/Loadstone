@@ -50,6 +50,7 @@ app.on("before-quit", (event) => {
   if (closing) return;
   closing = true;
   authentication?.cancel();
+  controller?.abortSync();
   void (async () => {
     await startup;
     unsubscribe?.();
@@ -57,12 +58,18 @@ app.on("before-quit", (event) => {
       [() => authentication?.close(), () => requests.drain(), () => controller?.close()],
       () => (lockCompromised ? undefined : release?.()),
     );
-    if (!clean) {
+    if (!clean || lockCompromised) {
       console.error("[Loadstone] Local storage did not shut down cleanly.");
-      dialog.showErrorBox(
-        "Loadstone shutdown",
-        "Local storage did not shut down cleanly. No update was installed. Reopen Loadstone to recover durable work.",
-      );
+      // An asynchronous dialog keeps the lease heartbeat running after a failed close.
+      await dialog
+        .showMessageBox({
+          type: "error",
+          title: "Loadstone shutdown",
+          message: lockCompromised
+            ? "Exclusive access to character storage was lost. Loadstone will close without installing an update."
+            : "Local storage did not shut down cleanly. No update was installed. Reopen Loadstone to recover durable work.",
+        })
+        .catch(() => {});
     }
     closed = true;
     if (clean && !lockCompromised && installAfterClose && install) await install();
@@ -86,10 +93,6 @@ async function main() {
       lockCompromised = true;
       storage?.invalidate();
       console.error("[Loadstone] Exclusive storage lock was lost; closing to protect data.");
-      dialog.showErrorBox(
-        "Loadstone storage lock",
-        "Exclusive access to character storage was lost. Loadstone will close to protect your data.",
-      );
       app.quit();
     },
   });
@@ -97,7 +100,7 @@ async function main() {
   const maintenance = await storageWorker(home, join(__dirname, "storage-worker.cjs"));
   storage = maintenance;
   if (lockCompromised) maintenance.invalidate();
-  const backup = await maintenance.run("prepare");
+  const backup = await maintenance.prepare();
   if (closing) return;
   startupStage = "character memory setup";
   const encryptionAvailable = () =>
@@ -124,17 +127,7 @@ async function main() {
   await maintenance.assertOwned();
   if (closing) return;
   const auth = authentication;
-  controller = new Controller(
-    home,
-    undefined,
-    () => auth.connection(),
-    true,
-    async () => {
-      const path = await maintenance.run("backup");
-      if (!path) throw new Error("No backup was created.");
-      return path;
-    },
-  );
+  controller = new Controller(home, undefined, () => auth.connection(), true, maintenance);
   const service = new DesktopService(controller, auth, async (url) => {
     const { response } = await dialog.showMessageBox({
       type: "question",
